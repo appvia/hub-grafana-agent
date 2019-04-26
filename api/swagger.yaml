@@ -52,7 +52,7 @@ paths:
           schema:
             $ref: "#/definitions/Dashboard"
         404:
-          description: "A generic error returned by the api"
+          description: "Resource not found"
           schema:
             $ref: "#/definitions/APIError"
         default:
