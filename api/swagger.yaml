@@ -1,0 +1,164 @@
+---
+swagger: "2.0"
+info:
+  description: "an agent used to provision and configure Grafana resources"
+  version: "v1beta"
+  title: "hub-grafana-agent"
+  contact:
+    name: "admin@appvia.io"
+    url: "https://github.com/appvia/hub-grafana-agent"
+    email: "support@appvia.io"
+basePath: "/api/hub.appvia.io/v1beta"
+schemes:
+- "http"
+consumes:
+- "application/json"
+produces:
+- "application/json"
+paths:
+  /healthz:
+    get:
+      tags:
+      - "health"
+      summary: "Get health of Agent"
+      description: "Returns health and status information of the API daemon and\n\
+        related components such as the runtime.\n"
+      parameters: []
+      responses:
+        200:
+          description: "Success"
+        default:
+          description: "A generic error returned by the api"
+          schema:
+            $ref: "#/definitions/APIError"
+  /dashboard/{namespace}:
+    parameters:
+      - $ref: "#/parameters/grafana-api-key"
+      - $ref: "#/parameters/grafana-api-url"
+      - $ref: "#/parameters/grafana-ca-cert"
+    get:
+      summary: "Get the dashboard for a namespace"
+      description: "Used to retrieve a dashboard\n"
+      parameters:
+      - name: "namespace"
+        in: "path"
+        description: "The namespace for the dashboard"
+        required: true
+        type: "string"
+        x-exportParamName: "Namespace"
+      responses:
+        200:
+          description: "The specification of a dashboard"
+          schema:
+            $ref: "#/definitions/Dashboard"
+        404:
+          description: "A generic error returned by the api"
+          schema:
+            $ref: "#/definitions/APIError"
+        default:
+          description: "A generic error returned by the api"
+          schema:
+            $ref: "#/definitions/APIError"
+    put:
+      summary: "Create a new dashboard for a namespace"
+      description: "Used to create a new dashboard for a namespace\n"
+      parameters:
+      - name: "namespace"
+        in: "path"
+        description: "The namespace for the dashboard"
+        required: true
+        type: "string"
+        x-exportParamName: "Namespace"
+      responses:
+        200:
+          description: "The specification of a dashboard"
+          schema:
+            $ref: "#/definitions/Dashboard"
+    delete:
+      summary: "Delete a dashboard for a namespace"
+      description: "Used to delete a dashboard for a namespace\n"
+      parameters:
+      - name: "namespace"
+        in: "path"
+        description: "The namespace for the dashboard"
+        required: true
+        type: "string"
+        x-exportParamName: "Namespace"
+      responses:
+        204:
+          description: "The resource was deleted successfully."
+        default:
+          description: "A generic error returned by the api"
+          schema:
+            $ref: "#/definitions/APIError"
+securityDefinitions:
+  apikey:
+    type: "apiKey"
+    name: "x-token"
+    in: "header"
+definitions:
+  APIError:
+    type: "object"
+    required:
+    - "reason"
+    properties:
+      reason:
+        type: "string"
+        description: "A human readable description used to define what error has occured"
+      detail:
+        type: "string"
+        description: "Additional details related to the error"
+    description: "Is a generic error event returned when the we have an internal error"
+  Dashboard:
+    type: "object"
+    required:
+    - "namespace"
+    - "url"
+    properties:
+      namespace:
+        type: "string"
+        description: "The namespace this dashboard is for"
+      url:
+        type: "string"
+        description: "The url of this dashboard"
+    description: "The definition of a dashboard"
+    example:
+      namespace: "namespace"
+      url: "url"
+parameters:
+  namespace:
+    name: "namespace"
+    in: "path"
+    description: "The namespace for the dashboard"
+    required: true
+    type: "string"
+    x-exportParamName: "Namespace"
+  grafana-api-key:
+    name: X-Grafana-API-Key
+    description: An API key used for requests to the Grafana API
+    in: header
+    type: string
+    required: true
+  grafana-api-url:
+    name: X-Grafana-API-URL
+    description: The URL of the Grafana API
+    in: header
+    type: string
+    required: true
+  grafana-ca-cert:
+    name: X-Grafana-CA
+    description: Base64 encoded CA certificate for requests to Grafana API
+    in: header
+    type: string
+    required: true
+responses:
+  apierror:
+    description: "A generic error returned by the api"
+    schema:
+      $ref: "#/definitions/APIError"
+  dashboard:
+    description: "The specification of a dashboard"
+    schema:
+      $ref: "#/definitions/Dashboard"
+  notfound:
+    description: "The resource does not exist"
