@@ -14,6 +14,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"os"
+	"text/template"
+	"io/ioutil"
 
 	"github.com/gorilla/mux"
 	logrus "github.com/sirupsen/logrus"
@@ -28,21 +31,21 @@ func handleDelete(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func handleInternalServerError(w http.ResponseWriter, reason string, err error) {
-	logrus.Println(err.Error())
+func handleInternalServerError(w http.ResponseWriter, reason string, detail string) {
 	var apiError ApiError
-	apiError = ApiError{Reason: reason, Detail: err.Error()}
+	apiError = ApiError{Reason: reason, Detail: detail}
 	payload, err := json.Marshal(apiError)
+	_ = err
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusInternalServerError)
 	w.Write(payload)
 }
 
-func handleNotFoundError(w http.ResponseWriter, err error) {
-	logrus.Println(err.Error())
+func handleNotFoundError(w http.ResponseWriter, detail string) {
 	var apiError ApiError
-	apiError = ApiError{Reason: "not found", Detail: err.Error()}
+	apiError = ApiError{Reason: "not found", Detail: detail}
 	payload, err := json.Marshal(apiError)
+	_ = err
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusNotFound)
 	w.Write(payload)
@@ -58,7 +61,6 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		logrus.Println("decode error:", err)
-		return
 	}
 
 	// Search for dashboard using tag
@@ -73,20 +75,50 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	_ = decodedCert
+	grafanaApiUrl := r.Header.Get("X-Grafana-API-Url")
+	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	if err != nil {
 		logrus.Println("decode error:", err)
-		return
 	}
 
-	// Search for dashboard using tag
-	// GET <grafana-url>/api/search?tag=hub-grafana-<namespace>
-	// Return URL
-	var url string
-	var dashboard Dashboard
-	dashboard = Dashboard{Namespace: namespace, Url: url}
-	payload, err := json.Marshal(dashboard)
+    req, err := http.NewRequest("GET", grafanaApiUrl + "/api/search?tag=hub-grafana-" + namespace, nil)
+    req.Header.Set("Authorization", "Bearer" + " " + grafanaApiKey)
 
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    body, _ := ioutil.ReadAll(resp.Body)
+    logrus.Println("Grafana response body:", string(body))
+
+	type GrafanaDashboard struct {
+		Id	int64  `json:"id"`
+		Url string `json:"url"`
+	}
+	var g []GrafanaDashboard
+
+	if err := json.Unmarshal(body, &g); err != nil {
+	    panic(err)
+	}
+	if len(g) == 0 {
+		handleNotFoundError(w, "dashboard not found")
+		return
+	} else if len(g) > 1 {
+		handleInternalServerError(w, "internal server error", "more than two dashboards matched query")
+		return
+	}
+	dash := g[0]
+
+	var url string = dash.Url
+	var id int64 = dash.Id
+
+	var dashboard Dashboard
+	dashboard = Dashboard{Namespace: namespace, Url: url, Id: id}
+	payload, err := json.Marshal(dashboard)
 	if err != nil {
 		logrus.Println(err)
 	}
@@ -103,21 +135,13 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		logrus.Println("decode error:", err)
-		return
 	}
 
-	// Read dashboard template json from file
-	// Render in namespace and a unique tag hub-grafana-<namespace>
-	// POST to <grafana-url>/api/dashboards/db
-
-	var url string
-	var dashboard Dashboard
-	dashboard = Dashboard{Namespace: namespace, Url: url}
-	payload, err := json.Marshal(dashboard)
-
-	if err != nil {
-		logrus.Println(err)
+	type Variables struct {
+		Namespace string
 	}
-	handleSuccess(w, payload)
-	return
+
+	templateVars := Variables{namespace}
+	tmpl := template.Must(template.ParseFiles("dashboards/kubernetes-prometheus.json.tmpl"))
+	tmpl.Execute(os.Stdout, templateVars)
 }
