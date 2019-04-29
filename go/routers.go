@@ -52,35 +52,35 @@ var routes = Routes{
 	Route{
 		"Index",
 		"GET",
-		"/api/hub.appvia.io/v1beta/",
+		"/api/v1beta/",
 		Index,
 	},
 
 	Route{
 		"DashboardNamespaceDelete",
 		strings.ToUpper("Delete"),
-		"/api/hub.appvia.io/v1beta/dashboard/{namespace}",
+		"/api/v1beta/dashboard/{namespace}",
 		DashboardNamespaceDelete,
 	},
 
 	Route{
 		"DashboardNamespaceGet",
 		strings.ToUpper("Get"),
-		"/api/hub.appvia.io/v1beta/dashboard/{namespace}",
+		"/api/v1beta/dashboard/{namespace}",
 		DashboardNamespaceGet,
 	},
 
 	Route{
 		"DashboardNamespacePut",
 		strings.ToUpper("Put"),
-		"/api/hub.appvia.io/v1beta/dashboard/{namespace}",
+		"/api/v1beta/dashboard/{namespace}",
 		DashboardNamespacePut,
 	},
 
 	Route{
 		"HealthzGet",
 		strings.ToUpper("Get"),
-		"/api/hub.appvia.io/v1beta/healthz",
+		"/api/v1beta/healthz",
 		HealthzGet,
 	},
 }

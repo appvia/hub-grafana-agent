@@ -34,7 +34,7 @@ paths:
   /dashboard/{namespace}:
     parameters:
       - $ref: "#/parameters/grafana-api-key"
-      - $ref: "#/parameters/grafana-api-url"
+      - $ref: "#/parameters/grafana-url"
       - $ref: "#/parameters/grafana-ca-cert"
     get:
       summary: "Get the dashboard for a namespace"
@@ -94,7 +94,7 @@ paths:
 securityDefinitions:
   apikey:
     type: "apiKey"
-    name: "x-token"
+    name: "Authorization"
     in: "header"
 definitions:
   APIError:
@@ -114,6 +114,7 @@ definitions:
     required:
     - "namespace"
     - "url"
+    - "id"
     properties:
       namespace:
         type: "string"
@@ -121,10 +122,14 @@ definitions:
       url:
         type: "string"
         description: "The url of this dashboard"
+      id:
+        type: "string"
+        description: "The id of this dashboard"
     description: "The definition of a dashboard"
     example:
-      namespace: "namespace"
-      url: "url"
+      namespace: "dev"
+      url: "https://yourgrafana.com/d/abc123/yourdash"
+      id: "abc123"
 parameters:
   namespace:
     name: "namespace"
@@ -139,9 +144,9 @@ parameters:
     in: header
     type: string
     required: true
-  grafana-api-url:
-    name: X-Grafana-API-URL
-    description: The URL of the Grafana API
+  grafana-url:
+    name: X-Grafana-URL
+    description: The URL of the Grafana instance
     in: header
     type: string
     required: true
