@@ -19,6 +19,9 @@ type Dashboard struct {
 	// The url of this dashboard
 	Url string `json:"url"`
 
-	// The url of this dashboard
+	// The uid of this dashboard
+	Uid string `json:"uid"`
+
+	// The id of this dashboard
 	Id int64 `json:"id"`
 }

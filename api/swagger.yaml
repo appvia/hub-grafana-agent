@@ -120,6 +120,7 @@ definitions:
     - "namespace"
     - "url"
     - "id"
+    - "uid"
     properties:
       namespace:
         type: "string"
@@ -130,11 +131,15 @@ definitions:
       id:
         type: "string"
         description: "The id of this dashboard"
+      uid:
+        type: "string"
+        description: "The uid of this dashboard"
     description: "The definition of a dashboard"
     example:
       namespace: "dev"
       url: "https://yourgrafana.com/d/abc123/yourdash"
-      id: "abc123"
+      id: "123"
+      uid: "abc123"
   TemplateUrl:
     description: "Template URL"
     type: "object"
