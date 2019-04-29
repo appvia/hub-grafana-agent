@@ -13,10 +13,10 @@ package swagger
 import (
 	"encoding/base64"
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"text/template"
-	"io/ioutil"
 
 	"github.com/gorilla/mux"
 	logrus "github.com/sirupsen/logrus"
@@ -82,27 +82,27 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 		logrus.Println("decode error:", err)
 	}
 
-    req, err := http.NewRequest("GET", grafanaApiUrl + "/api/search?tag=hub-grafana-" + namespace, nil)
-    req.Header.Set("Authorization", "Bearer" + " " + grafanaApiKey)
+	req, err := http.NewRequest("GET", grafanaApiUrl+"/api/search?tag=hub-grafana-"+namespace, nil)
+	req.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
 
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil {
-        panic(err)
-    }
-    defer resp.Body.Close()
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
 
-    body, _ := ioutil.ReadAll(resp.Body)
-    logrus.Println("Grafana response body:", string(body))
+	body, _ := ioutil.ReadAll(resp.Body)
+	logrus.Println("Grafana response body:", string(body))
 
 	type GrafanaDashboard struct {
-		Id	int64  `json:"id"`
+		Id  int64  `json:"id"`
 		Url string `json:"url"`
 	}
 	var g []GrafanaDashboard
 
 	if err := json.Unmarshal(body, &g); err != nil {
-	    panic(err)
+		panic(err)
 	}
 	if len(g) == 0 {
 		handleNotFoundError(w, "dashboard not found")
