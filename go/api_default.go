@@ -11,11 +11,12 @@
 package swagger
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"text/template"
 
 	"github.com/gorilla/mux"
@@ -113,7 +114,7 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	}
 	dash := g[0]
 
-	var url string = dash.Url
+	var url string = grafanaUrl + dash.Url
 	var id int64 = dash.Id
 
 	var dashboard Dashboard
@@ -132,6 +133,8 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	_ = decodedCert
+	grafanaUrl := r.Header.Get("X-Grafana-Url")
+	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	if err != nil {
 		logrus.Println("decode error:", err)
@@ -140,8 +143,38 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	type Variables struct {
 		Namespace string
 	}
-
 	templateVars := Variables{namespace}
+	var payload bytes.Buffer
 	tmpl := template.Must(template.ParseFiles("dashboards/kubernetes-prometheus.json.tmpl"))
-	tmpl.Execute(os.Stdout, templateVars)
+	err = tmpl.Execute(&payload, templateVars)
+
+	var reader io.Reader
+	reader = &payload
+	req, err := http.NewRequest("POST", grafanaUrl+"/api/dashboards/db", reader)
+	req.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	type GrafanaResponse struct {
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	}
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	logrus.Println("Grafana response body:", string(body))
+	var m GrafanaResponse
+	if err := json.Unmarshal(body, &m); err != nil {
+		panic(err)
+	}
+	if m.Status == "name-exists" {
+		logrus.Printf("Dashboard already exists")
+		handleSuccess(w, []byte(`{"message":"dashboard already exists"}`))
+		return
+	}
 }
