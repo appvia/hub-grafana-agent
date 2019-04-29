@@ -34,7 +34,7 @@ paths:
   /dashboard/{namespace}:
     parameters:
       - $ref: "#/parameters/grafana-api-key"
-      - $ref: "#/parameters/grafana-api-url"
+      - $ref: "#/parameters/grafana-url"
       - $ref: "#/parameters/grafana-ca-cert"
     get:
       summary: "Get the dashboard for a namespace"
@@ -144,9 +144,9 @@ parameters:
     in: header
     type: string
     required: true
-  grafana-api-url:
-    name: X-Grafana-API-URL
-    description: The URL of the Grafana API
+  grafana-url:
+    name: X-Grafana-URL
+    description: The URL of the Grafana instance
     in: header
     type: string
     required: true

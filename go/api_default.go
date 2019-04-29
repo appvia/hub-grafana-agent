@@ -75,14 +75,14 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	_ = decodedCert
-	grafanaApiUrl := r.Header.Get("X-Grafana-API-Url")
+	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	if err != nil {
 		logrus.Println("decode error:", err)
 	}
 
-	req, err := http.NewRequest("GET", grafanaApiUrl+"/api/search?tag=hub-grafana-"+namespace, nil)
+	req, err := http.NewRequest("GET", grafanaUrl+"/api/search?tag=hub-grafana-"+namespace, nil)
 	req.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
 
 	client := &http.Client{}

@@ -97,7 +97,7 @@ func Middleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if r.Header.Get("X-Grafana-API-URL") == "" || r.Header.Get("X-Grafana-API-Key") == "" || r.Header.Get("X-Grafana-CA") == "" {
+		if r.Header.Get("X-Grafana-URL") == "" || r.Header.Get("X-Grafana-API-Key") == "" || r.Header.Get("X-Grafana-CA") == "" {
 			logrus.Infof("Missing Grafana header")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
