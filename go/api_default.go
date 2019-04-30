@@ -231,7 +231,7 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	if m.Status == "success" {
-		responsePayload := Dashboard{Namespace: namespace, Id: m.Id, Uid: m.Uid, Url: m.Url}
+		responsePayload := Dashboard{Namespace: namespace, Id: m.Id, Uid: m.Uid, Url: grafanaUrl + m.Url}
 		marshalPayload, err := json.Marshal(responsePayload)
 		if err != nil {
 			logrus.Println(err)
