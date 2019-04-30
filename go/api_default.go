@@ -11,11 +11,12 @@
 package swagger
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"text/template"
 
 	"github.com/gorilla/mux"
@@ -58,15 +59,67 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	_ = decodedCert
+	grafanaUrl := r.Header.Get("X-Grafana-Url")
+	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	if err != nil {
 		logrus.Println("decode error:", err)
 	}
 
-	// Search for dashboard using tag
-	// GET <grafana-url>/api/search?tag=hub-grafana-<namespace>
-	// Delete dashboard using uid
-	// DELETE <grafana-url>/api/dashboards/uid/hub-grafana-<namespace>
+	getReq, err := http.NewRequest("GET", grafanaUrl+"/api/search?tag=hub-grafana-"+namespace, nil)
+	getReq.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
+
+	client := &http.Client{}
+	getResp, err := client.Do(getReq)
+	if err != nil {
+		panic(err)
+	}
+	defer getResp.Body.Close()
+
+	body, _ := ioutil.ReadAll(getResp.Body)
+	logrus.Println("Grafana response body:", string(body))
+
+	type GrafanaDashboard struct {
+		Uid string `json:"uid"`
+		Id  int64  `json:"id"`
+		Url string `json:"url"`
+	}
+	var g []GrafanaDashboard
+
+	if err := json.Unmarshal(body, &g); err != nil {
+		panic(err)
+	}
+	if len(g) == 0 {
+		w.WriteHeader(204)
+		return
+	} else if len(g) > 1 {
+		handleInternalServerError(w, "internal server error", "more than two dashboards matched query")
+		return
+	} else if len(g) == 1 {
+		logrus.Println("Dashboard found")
+	}
+
+	dash := g[0]
+	var uid string = dash.Uid
+
+	logrus.Printf("Attempting to delete dashboard with uid %s", string(uid))
+
+	deleteReq, err := http.NewRequest("DELETE", grafanaUrl+"/api/dashboards/uid/"+uid, nil)
+	deleteReq.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
+
+	client = &http.Client{}
+	deleteResp, err := client.Do(deleteReq)
+	if err != nil {
+		panic(err)
+	}
+	defer deleteResp.Body.Close()
+	body, _ = ioutil.ReadAll(deleteResp.Body)
+	logrus.Println("Grafana response body:", string(body))
+	if deleteResp.StatusCode == 200 {
+		logrus.Println("Dashboard deleted!")
+		w.WriteHeader(204)
+		return
+	}
 }
 
 func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +149,7 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	logrus.Println("Grafana response body:", string(body))
 
 	type GrafanaDashboard struct {
+		Uid string `json:"uid"`
 		Id  int64  `json:"id"`
 		Url string `json:"url"`
 	}
@@ -113,11 +167,12 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	}
 	dash := g[0]
 
-	var url string = dash.Url
+	var url string = grafanaUrl + dash.Url
 	var id int64 = dash.Id
+	var uid string = dash.Uid
 
 	var dashboard Dashboard
-	dashboard = Dashboard{Namespace: namespace, Url: url, Id: id}
+	dashboard = Dashboard{Namespace: namespace, Url: url, Id: id, Uid: uid}
 	payload, err := json.Marshal(dashboard)
 	if err != nil {
 		logrus.Println(err)
@@ -132,6 +187,8 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	_ = decodedCert
+	grafanaUrl := r.Header.Get("X-Grafana-Url")
+	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	if err != nil {
 		logrus.Println("decode error:", err)
@@ -140,8 +197,51 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	type Variables struct {
 		Namespace string
 	}
-
 	templateVars := Variables{namespace}
+	var payload bytes.Buffer
 	tmpl := template.Must(template.ParseFiles("dashboards/kubernetes-prometheus.json.tmpl"))
-	tmpl.Execute(os.Stdout, templateVars)
+	err = tmpl.Execute(&payload, templateVars)
+	tmpl.Execute(&payload, templateVars)
+
+	var reader io.Reader
+	reader = &payload
+	logrus.Printf("Attempting to create dashboard for namespace %s in grafana", namespace)
+	req, err := http.NewRequest("POST", grafanaUrl+"/api/dashboards/db", reader)
+	req.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	type GrafanaResponse struct {
+		Status string `json:"status"`
+		Id     int64  `json:"id,omitempty"`
+		Uid    string `json:"uid,omitempty"`
+		Url    string `json:"url,omitempty"`
+	}
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	logrus.Println("Grafana response body:", string(body))
+	var m GrafanaResponse
+	if err := json.Unmarshal(body, &m); err != nil {
+		panic(err)
+	}
+	if m.Status == "success" {
+		responsePayload := Dashboard{Namespace: namespace, Id: m.Id, Uid: m.Uid, Url: m.Url}
+		marshalPayload, err := json.Marshal(responsePayload)
+		if err != nil {
+			logrus.Println(err)
+		}
+		handleSuccess(w, marshalPayload)
+	}
+	if m.Status == "name-exists" {
+		// TODO: update dashboard in thise case
+		logrus.Printf("Dashboard already exists")
+		handleSuccess(w, []byte(`{"message":"dashboard already exists"}`))
+		return
+	}
 }

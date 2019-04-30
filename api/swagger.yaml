@@ -69,6 +69,11 @@ paths:
         required: true
         type: "string"
         x-exportParamName: "Namespace"
+      - name: "template_url"
+        in: "body"
+        description: "The URL of a grafana dashboard template"
+        schema:
+          $ref: "#/definitions/TemplateUrl"
       responses:
         200:
           description: "The specification of a dashboard"
@@ -115,6 +120,7 @@ definitions:
     - "namespace"
     - "url"
     - "id"
+    - "uid"
     properties:
       namespace:
         type: "string"
@@ -125,11 +131,24 @@ definitions:
       id:
         type: "string"
         description: "The id of this dashboard"
+      uid:
+        type: "string"
+        description: "The uid of this dashboard"
     description: "The definition of a dashboard"
     example:
       namespace: "dev"
       url: "https://yourgrafana.com/d/abc123/yourdash"
-      id: "abc123"
+      id: "123"
+      uid: "abc123"
+  TemplateUrl:
+    description: "Template URL"
+    type: "object"
+    properties:
+      template_url:
+        description: "The URL of a Grafana dashboard template"
+        type: "string"
+    required:
+      - template_url
 parameters:
   namespace:
     name: "namespace"
@@ -138,6 +157,12 @@ parameters:
     required: true
     type: "string"
     x-exportParamName: "Namespace"
+  template_url:
+    name: "template_url"
+    in: "body"
+    description: "The URL of a grafana dashboard"
+    schema:
+      "$ref": "#/definitions/TemplateUrl"
   grafana-api-key:
     name: X-Grafana-API-Key
     description: An API key used for requests to the Grafana API
