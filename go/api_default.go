@@ -75,14 +75,13 @@ func callGrafana(url string, apiKey string, verb string, payload io.Reader) (int
 	defer resp.Body.Close()
 	if err != nil {
 		logrus.Println("Error calling Grafana:", verb, url, err)
-		return statusCode, body, err
 	} else {
 		body, _ = ioutil.ReadAll(resp.Body)
 		statusCode = resp.StatusCode
 		logrus.Printf("Response body from Grafana: %s", string(body))
 		logrus.Printf("Response code from Grafana: %v", statusCode)
-		return statusCode, body, err
 	}
+	return statusCode, body, err
 }
 
 func getTemplateFromUrl(template_url string) ([]byte, error) {
@@ -142,6 +141,7 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	if len(g) == 0 {
+		logrus.Println("Dashboard already deleted!")
 		w.WriteHeader(204)
 		return
 	} else if len(g) > 1 {
@@ -156,20 +156,18 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 
 	logrus.Printf("Attempting to delete dashboard with uid %s", string(uid))
 
-	deleteReq, err := http.NewRequest("DELETE", grafanaUrl+"/api/dashboards/uid/"+uid, nil)
-	deleteReq.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
-
-	client = &http.Client{}
-	deleteResp, err := client.Do(deleteReq)
+	status, body, err := callGrafana(grafanaUrl+"/api/dashboards/uid/"+uid, grafanaApiKey, "DELETE", nil)
 	if err != nil {
-		panic(err)
+		handleInternalServerError(w, "internal server error", "error deleting dashboard from Grafana")
+		return
 	}
-	defer deleteResp.Body.Close()
-	body, _ = ioutil.ReadAll(deleteResp.Body)
-	logrus.Println("Grafana response body:", string(body))
-	if deleteResp.StatusCode == 200 {
+
+	if status == 200 {
 		logrus.Println("Dashboard deleted!")
 		w.WriteHeader(204)
+		return
+	} else {
+		handleInternalServerError(w, "internal server error", "error deleting dashboard from Grafana")
 		return
 	}
 }
@@ -263,8 +261,10 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	type Variables struct {
 		Namespace string
 	}
+
 	templateVars := Variables{namespace}
 	var payload bytes.Buffer
+
 	tmpl := template.Must(template.ParseFiles("dashboards/kubernetes-prometheus.json.tmpl"))
 	err = tmpl.Execute(&payload, templateVars)
 	tmpl.Execute(&payload, templateVars)
@@ -272,16 +272,13 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	var reader io.Reader
 	reader = &payload
 	logrus.Printf("Attempting to create dashboard for namespace %s in grafana", namespace)
-	req, err := http.NewRequest("POST", grafanaUrl+"/api/dashboards/db", reader)
-	req.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
-	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
+	status, body, err := callGrafana(grafanaUrl+"/api/dashboards/db", grafanaApiKey, "GET", reader)
+
+	if status != 200 {
+		handleInternalServerError(w, "internal server error", "more than two dashboards matched query")
+		return
 	}
-	defer resp.Body.Close()
 
 	type GrafanaResponse struct {
 		Status string `json:"status"`
@@ -290,8 +287,6 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 		Url    string `json:"url,omitempty"`
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
-	logrus.Println("Grafana response body:", string(body))
 	var m GrafanaResponse
 	if err := json.Unmarshal(body, &m); err != nil {
 		panic(err)
