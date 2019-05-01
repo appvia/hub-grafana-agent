@@ -23,6 +23,8 @@ import (
 	logrus "github.com/sirupsen/logrus"
 )
 
+const dashboardPrefix string = "hub-grafana-"
+
 func handleSuccess(w http.ResponseWriter, payload []byte) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.Write(payload)
@@ -62,12 +64,52 @@ func handleNotFoundError(w http.ResponseWriter, detail string) {
 	w.Write(payload)
 }
 
+func callGrafana(url string, apiKey string, verb string, payload io.Reader) (int, []byte, error){
+	var statusCode int
+	var body []byte
+	var err error
+	req, err := http.NewRequest(verb, url, payload)
+	req.Header.Set("Authorization", "Bearer"+" "+apiKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Println("Error calling Grafana:", verb, url, err)
+		return statusCode, body, err
+	} else {
+		body, _ = ioutil.ReadAll(resp.Body)
+		statusCode = resp.StatusCode
+		logrus.Printf("Response body from Grafana: %s", string(body))
+		logrus.Printf("Response code from Grafana: %v", statusCode)
+		return statusCode, body, err
+	}
+}
+
+func getTemplateFromUrl(template_url string) ([]byte, error) {
+	var templateBody []byte
+	var err error
+	templateReq, err := http.NewRequest("GET", template_url, nil)
+	templateReq.Header.Set("Accept", "application/json,text/plain")
+	client := &http.Client{}
+	templateResp, err := client.Do(templateReq)
+	if err != nil {
+		logrus.Println("Error fetching Grafana dashboard json from URL:", template_url)
+		return templateBody, err
+	}
+	defer templateResp.Body.Close()
+	templateBody, _ = ioutil.ReadAll(templateResp.Body)
+	logrus.Println("Template response body:", string(templateBody))
+	return templateBody, nil
+}
+
 func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	namespace := vars["namespace"]
-	_ = namespace
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+	if err != nil {
+		logrus.Println("decode error:", err)
+	}
 	_ = decodedCert
 	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
@@ -76,7 +118,7 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 		logrus.Println("decode error:", err)
 	}
 
-	getReq, err := http.NewRequest("GET", grafanaUrl+"/api/search?tag=hub-grafana-"+namespace, nil)
+	getReq, err := http.NewRequest("GET", grafanaUrl+"/api/search?tag="+dashboardPrefix+namespace, nil)
 	getReq.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
 
 	client := &http.Client{}
@@ -132,45 +174,25 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func callGrafana(url string, apiKey string, verb string, payload io.Reader) (int, []byte, error){
-	req, err := http.NewRequest(verb, url, payload)
-	req.Header.Set("Authorization", "Bearer"+" "+apiKey)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		logrus.Println(err)
-	}
-	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
-	statusCode := resp.StatusCode
-	return statusCode, body, err
-}
-
 func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	namespace := vars["namespace"]
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+	if err != nil {
+		logrus.Println("decode error:", err)
+	}
 	_ = decodedCert
 	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
-	if err != nil {
-		logrus.Println("decode error:", err)
+
+	status, body, err := callGrafana(grafanaUrl+"/api/search?tag="+dashboardPrefix+namespace, grafanaApiKey, "GET", nil)
+
+	if err != nil || status != 200 {
+		handleInternalServerError(w, "internal server error", "error calling Grafana")
+		return
 	}
-
-	req, err := http.NewRequest("GET", grafanaUrl+"/api/search?tag=hub-grafana-"+namespace, nil)
-	req.Header.Set("Authorization", "Bearer"+" "+grafanaApiKey)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
-	logrus.Println("Grafana response body:", string(body))
 
 	type GrafanaDashboard struct {
 		Uid string `json:"uid"`
@@ -197,10 +219,13 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 
 	var dashboard Dashboard
 	dashboard = Dashboard{Namespace: namespace, Url: url, Id: id, Uid: uid}
+
 	payload, err := json.Marshal(dashboard)
+
 	if err != nil {
 		logrus.Println(err)
 	}
+
 	handleSuccess(w, payload)
 	return
 }
@@ -208,12 +233,14 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	namespace := vars["namespace"]
+
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+	if err != nil {
+		logrus.Println("decode error:", err)
+	}
 	_ = decodedCert
 	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
-
-
 	reqBody, err := ioutil.ReadAll(r.Body)
 
 	if len(reqBody) > 0 {
@@ -226,22 +253,12 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 		}
 		template_url := t.Url
 		logrus.Println("PUT request for namespace:", namespace, "template_url:", template_url)
-		templateReq, err := http.NewRequest("GET", template_url, nil)
-		templateReq.Header.Set("Accept", "application/json,text/plain")
-		client := &http.Client{}
-		templateResp, err := client.Do(templateReq)
+		template, err := getTemplateFromUrl(template_url)
+		logrus.Println("Template body:", string(template))
 		if err != nil {
-			logrus.Println("Error fetching template from URL:", template_url)
 			handleInternalServerError(w, "internal server error", "error fetching template from template_url")
 			return
 		}
-		defer templateResp.Body.Close()
-		templateBody, _ := ioutil.ReadAll(templateResp.Body)
-		logrus.Println("Template response body:", string(templateBody))
-	}
-
-	if err != nil {
-		logrus.Println("decode error:", err)
 	}
 
 	type Variables struct {
