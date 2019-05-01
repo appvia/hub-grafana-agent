@@ -64,7 +64,7 @@ func handleNotFoundError(w http.ResponseWriter, detail string) {
 	w.Write(payload)
 }
 
-func callGrafana(url string, apiKey string, verb string, payload io.Reader) (int, []byte, error){
+func callGrafana(url string, apiKey string, verb string, payload io.Reader) (int, []byte, error) {
 	var statusCode int
 	var body []byte
 	var err error
@@ -185,7 +185,6 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	_ = decodedCert
 	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
-
 
 	status, body, err := callGrafana(grafanaUrl+"/api/search?tag="+dashboardPrefix+namespace, grafanaApiKey, "GET", nil)
 
