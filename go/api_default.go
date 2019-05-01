@@ -132,6 +132,20 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func callGrafana(url string, apiKey string, verb string, payload io.Reader) (int, []byte, error){
+	req, err := http.NewRequest(verb, url, payload)
+	req.Header.Set("Authorization", "Bearer"+" "+apiKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		logrus.Println(err)
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	statusCode := resp.StatusCode
+	return statusCode, body, err
+}
+
 func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	namespace := vars["namespace"]
