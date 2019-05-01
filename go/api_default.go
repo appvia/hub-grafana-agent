@@ -12,6 +12,7 @@ package swagger
 
 import (
 	"bytes"
+	"errors"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -101,6 +102,40 @@ func getTemplateFromUrl(template_url string) ([]byte, error) {
 	return templateBody, nil
 }
 
+func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey string) (url string, id int64, uid string, err error) {
+	status, body, err := callGrafana(grafanaUrl+"/api/search?tag="+dashboardPrefix+namespace, grafanaApiKey, "GET", nil)
+
+	if status != 200 || err != nil {
+		logrus.Println("Error getting dashboard for namespace:", namespace)
+		return
+	}
+
+	type GrafanaDashboard struct {
+		Uid string `json:"uid"`
+		Id  int64  `json:"id"`
+		Url string `json:"url"`
+	}
+	var g []GrafanaDashboard
+
+	if err := json.Unmarshal(body, &g); err != nil {
+		panic(err)
+	}
+	if len(g) == 0 {
+		errors.New("dashboard not found")
+		return
+	} else if len(g) > 1 {
+		errors.New("more than one dashboard found")
+		return
+	}
+	dash := g[0]
+
+	url = grafanaUrl + dash.Url
+	id = dash.Id
+	uid = dash.Uid
+
+	return url, id, uid, err
+}
+
 func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	namespace := vars["namespace"]
@@ -184,43 +219,20 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
-	status, body, err := callGrafana(grafanaUrl+"/api/search?tag="+dashboardPrefix+namespace, grafanaApiKey, "GET", nil)
+	url, id, uid, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
 
-	if err != nil || status != 200 {
+	if err != nil {
 		handleInternalServerError(w, "internal server error", "error calling Grafana")
 		return
 	}
 
-	type GrafanaDashboard struct {
-		Uid string `json:"uid"`
-		Id  int64  `json:"id"`
-		Url string `json:"url"`
-	}
-	var g []GrafanaDashboard
-
-	if err := json.Unmarshal(body, &g); err != nil {
-		panic(err)
-	}
-	if len(g) == 0 {
-		handleNotFoundError(w, "dashboard not found")
-		return
-	} else if len(g) > 1 {
-		handleInternalServerError(w, "internal server error", "more than two dashboards matched query")
-		return
-	}
-	dash := g[0]
-
-	var url string = grafanaUrl + dash.Url
-	var id int64 = dash.Id
-	var uid string = dash.Uid
-
 	var dashboard Dashboard
 	dashboard = Dashboard{Namespace: namespace, Url: url, Id: id, Uid: uid}
-
 	payload, err := json.Marshal(dashboard)
 
 	if err != nil {
 		logrus.Println(err)
+		handleInternalServerError(w, "internal server error", "error getting Grafana dashboard")
 	}
 
 	handleSuccess(w, payload)
