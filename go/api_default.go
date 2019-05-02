@@ -42,6 +42,16 @@ func handleInternalServerError(w http.ResponseWriter, reason string, detail stri
 	w.Write(payload)
 }
 
+func handleBadRequest(w http.ResponseWriter, detail string) {
+	var apiError ApiError
+	apiError = ApiError{Reason: "bad request", Detail: detail}
+	payload, err := json.Marshal(apiError)
+	_ = err
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.WriteHeader(http.StatusBadRequest)
+	w.Write(payload)
+}
+
 func handleNotFoundError(w http.ResponseWriter, detail string) {
 	var apiError ApiError
 	apiError = ApiError{Reason: "not found", Detail: detail}
@@ -184,11 +194,37 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	namespace := vars["namespace"]
-
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	_ = decodedCert
 	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
+
+
+	reqBody, err := ioutil.ReadAll(r.Body)
+
+	if len(reqBody) > 0 {
+		var t TemplateUrl
+		err = json.Unmarshal(reqBody, &t)
+		if err != nil || t.Url == "" {
+			logrus.Println("Malformed request body:", string(reqBody))
+			handleBadRequest(w, "request body malformed")
+			return
+		}
+		template_url := t.Url
+		logrus.Println("PUT request for namespace:", namespace, "template_url:", template_url)
+		templateReq, err := http.NewRequest("GET", template_url, nil)
+		templateReq.Header.Set("Accept", "application/json,text/plain")
+		client := &http.Client{}
+		templateResp, err := client.Do(templateReq)
+		if err != nil {
+			logrus.Println("Error fetching template from URL:", template_url)
+			handleInternalServerError(w, "internal server error", "error fetching template from template_url")
+			return
+		}
+		defer templateResp.Body.Close()
+		templateBody, _ := ioutil.ReadAll(templateResp.Body)
+		logrus.Println("Template response body:", string(templateBody))
+	}
 
 	if err != nil {
 		logrus.Println("decode error:", err)
@@ -231,7 +267,7 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	if m.Status == "success" {
-		responsePayload := Dashboard{Namespace: namespace, Id: m.Id, Uid: m.Uid, Url: m.Url}
+		responsePayload := Dashboard{Namespace: namespace, Id: m.Id, Uid: m.Uid, Url: grafanaUrl + m.Url}
 		marshalPayload, err := json.Marshal(responsePayload)
 		if err != nil {
 			logrus.Println(err)
