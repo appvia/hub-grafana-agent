@@ -31,7 +31,7 @@ paths:
           description: "A generic error returned by the api"
           schema:
             $ref: "#/definitions/APIError"
-  /dashboard/{name}:
+  /dashboards/{name}:
     parameters:
       - $ref: "#/parameters/grafana-api-key"
       - $ref: "#/parameters/grafana-url"
