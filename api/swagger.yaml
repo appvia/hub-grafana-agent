@@ -72,6 +72,7 @@ paths:
       - name: "template_url"
         in: "body"
         description: "The URL of a grafana dashboard template"
+        required: true
         schema:
           $ref: "#/definitions/TemplateUrl"
       responses:
