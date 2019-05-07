@@ -31,21 +31,21 @@ paths:
           description: "A generic error returned by the api"
           schema:
             $ref: "#/definitions/APIError"
-  /dashboard/{namespace}:
+  /dashboards/{name}:
     parameters:
       - $ref: "#/parameters/grafana-api-key"
       - $ref: "#/parameters/grafana-url"
       - $ref: "#/parameters/grafana-ca-cert"
     get:
-      summary: "Get the dashboard for a namespace"
+      summary: "Get the dashboard for a name"
       description: "Used to retrieve a dashboard\n"
       parameters:
-      - name: "namespace"
+      - name: "name"
         in: "path"
-        description: "The namespace for the dashboard"
+        description: "The name for the dashboard"
         required: true
         type: "string"
-        x-exportParamName: "Namespace"
+        x-exportParamName: "Name"
       responses:
         200:
           description: "The specification of a dashboard"
@@ -60,15 +60,15 @@ paths:
           schema:
             $ref: "#/definitions/APIError"
     put:
-      summary: "Create a new dashboard for a namespace"
-      description: "Used to create a new dashboard for a namespace\n"
+      summary: "Create a new dashboard for a name"
+      description: "Used to create a new dashboard for a name\n"
       parameters:
-      - name: "namespace"
+      - name: "name"
         in: "path"
-        description: "The namespace for the dashboard"
+        description: "The name for the dashboard"
         required: true
         type: "string"
-        x-exportParamName: "Namespace"
+        x-exportParamName: "Name"
       - name: "template_url"
         in: "body"
         description: "The URL of a grafana dashboard template"
@@ -81,15 +81,15 @@ paths:
           schema:
             $ref: "#/definitions/Dashboard"
     delete:
-      summary: "Delete a dashboard for a namespace"
-      description: "Used to delete a dashboard for a namespace\n"
+      summary: "Delete a dashboard for a name"
+      description: "Used to delete a dashboard for a name\n"
       parameters:
-      - name: "namespace"
+      - name: "name"
         in: "path"
-        description: "The namespace for the dashboard"
+        description: "The name for the dashboard"
         required: true
         type: "string"
-        x-exportParamName: "Namespace"
+        x-exportParamName: "Name"
       responses:
         204:
           description: "The resource was deleted successfully."
@@ -118,14 +118,14 @@ definitions:
   Dashboard:
     type: "object"
     required:
-    - "namespace"
+    - "name"
     - "url"
     - "id"
     - "uid"
     properties:
-      namespace:
+      name:
         type: "string"
-        description: "The namespace this dashboard is for"
+        description: "The name this dashboard is for"
       url:
         type: "string"
         description: "The url of this dashboard"
@@ -137,7 +137,7 @@ definitions:
         description: "The uid of this dashboard"
     description: "The definition of a dashboard"
     example:
-      namespace: "dev"
+      name: "dev"
       url: "https://yourgrafana.com/d/abc123/yourdash"
       id: "123"
       uid: "abc123"
@@ -151,13 +151,13 @@ definitions:
     required:
       - template_url
 parameters:
-  namespace:
-    name: "namespace"
+  name:
+    name: "name"
     in: "path"
-    description: "The namespace for the dashboard"
+    description: "The name for the dashboard"
     required: true
     type: "string"
-    x-exportParamName: "Namespace"
+    x-exportParamName: "Name"
   template_url:
     name: "template_url"
     in: "body"

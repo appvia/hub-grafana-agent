@@ -13,8 +13,8 @@ package swagger
 // The definition of a dashboard
 type Dashboard struct {
 
-	// The namespace this dashboard is for
-	Namespace string `json:"namespace"`
+	// The name of this dashboard
+	Name string `json:"name"`
 
 	// The url of this dashboard
 	Url string `json:"url"`

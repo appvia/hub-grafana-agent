@@ -57,24 +57,24 @@ var routes = Routes{
 	},
 
 	Route{
-		"DashboardNamespaceDelete",
+		"DashboardNameDelete",
 		strings.ToUpper("Delete"),
-		"/api/v1beta/dashboard/{namespace}",
-		DashboardNamespaceDelete,
+		"/api/v1beta/dashboard/{name}",
+		DashboardNameDelete,
 	},
 
 	Route{
-		"DashboardNamespaceGet",
+		"DashboardNameGet",
 		strings.ToUpper("Get"),
-		"/api/v1beta/dashboard/{namespace}",
-		DashboardNamespaceGet,
+		"/api/v1beta/dashboard/{name}",
+		DashboardNameGet,
 	},
 
 	Route{
-		"DashboardNamespacePut",
+		"DashboardNamePut",
 		strings.ToUpper("Put"),
-		"/api/v1beta/dashboard/{namespace}",
-		DashboardNamespacePut,
+		"/api/v1beta/dashboard/{name}",
+		DashboardNamePut,
 	},
 
 	Route{

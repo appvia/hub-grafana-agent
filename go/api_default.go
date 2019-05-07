@@ -108,13 +108,13 @@ func getTemplateFromUrl(templateUrl string) ([]byte, error) {
 	return templateBody, nil
 }
 
-func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey string) (url string, id int64, uid string, version int64, found bool, err error) {
+func getDashboardByName(name string, grafanaUrl string, grafanaApiKey string) (url string, id int64, uid string, version int64, found bool, err error) {
 
-	logrus.Println("Searching for dashboard using tag:", dashboardPrefix+namespace)
-	status, body, err := callGrafana(grafanaUrl+"/api/search?tag="+dashboardPrefix+namespace, grafanaApiKey, "GET", nil)
+	logrus.Println("Searching for dashboard using tag:", dashboardPrefix+name)
+	status, body, err := callGrafana(grafanaUrl+"/api/search?tag="+dashboardPrefix+name, grafanaApiKey, "GET", nil)
 
 	if status != 200 || err != nil {
-		logrus.Println("Error getting dashboard for namespace:", namespace)
+		logrus.Println("Error getting dashboard for name:", name)
 		return
 	}
 
@@ -152,9 +152,9 @@ func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey 
 	return url, id, uid, version, found, err
 }
 
-func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
+func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	namespace := vars["namespace"]
+	name := vars["name"]
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
@@ -168,7 +168,7 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 		logrus.Println("decode error:", err)
 	}
 
-	url, id, uid, version, found, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
+	url, id, uid, version, found, err := getDashboardByName(name, grafanaUrl, grafanaApiKey)
 	_ = version
 
 	if err != nil {
@@ -213,9 +213,9 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
+func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	namespace := vars["namespace"]
+	name := vars["name"]
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
@@ -225,7 +225,7 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
-	url, id, uid, version, found, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
+	url, id, uid, version, found, err := getDashboardByName(name, grafanaUrl, grafanaApiKey)
 	_ = version
 
 	if err != nil {
@@ -239,7 +239,7 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var dashboard Dashboard
-	dashboard = Dashboard{Namespace: namespace, Url: url, Id: id, Uid: uid}
+	dashboard = Dashboard{Name: name, Url: url, Id: id, Uid: uid}
 	payload, err := json.Marshal(dashboard)
 
 	if err != nil {
@@ -250,14 +250,14 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func renderTemplate(namespace string, id string, uid string, version string, templateAsString string) (renderedTemplate io.Reader, err error) {
+func renderTemplate(name string, id string, uid string, version string, templateAsString string) (renderedTemplate io.Reader, err error) {
 	type Variables struct {
-		Namespace string
+		Name string
 		Id        string
 		Uid       string
 		Version   string
 	}
-	templateVars := Variables{namespace, id, uid, version}
+	templateVars := Variables{name, id, uid, version}
 	var payload bytes.Buffer
 	t := template.New("dashboard")
 	t.Parse(templateAsString)
@@ -272,9 +272,9 @@ func renderTemplate(namespace string, id string, uid string, version string, tem
 	return renderedTemplate, err
 }
 
-func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
+func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	namespace := vars["namespace"]
+	name := vars["name"]
 
 	decodedCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
@@ -300,7 +300,7 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templateUrl := t.Url
-	logrus.Println("PUT request for namespace:", namespace, "templateUrl:", templateUrl)
+	logrus.Println("PUT request for name:", name, "templateUrl:", templateUrl)
 	templateFromUrl, err := getTemplateFromUrl(templateUrl)
 
 	if err != nil {
@@ -308,7 +308,7 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, id, uid, version, found, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
+	url, id, uid, version, found, err := getDashboardByName(name, grafanaUrl, grafanaApiKey)
 
 	if err != nil {
 		handleInternalServerError(w, "internal server error", "error searching for dashboard in Grafana")
@@ -326,9 +326,9 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 		logrus.Printf("Updating existing dashboard id: %s uid: %s version: %s", idVar, uidVar, versionVar)
 	}
 
-	logrus.Printf("Attempting to create dashboard for namespace %s in grafana", namespace)
+	logrus.Printf("Attempting to create dashboard for name %s in grafana", name)
 
-	renderedTemplateFromUrl, err := renderTemplate(namespace, idVar, uidVar, versionVar, string(templateFromUrl))
+	renderedTemplateFromUrl, err := renderTemplate(name, idVar, uidVar, versionVar, string(templateFromUrl))
 
 	if err != nil {
 		logrus.Println(err)
@@ -358,7 +358,7 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	uid = g.Uid
 
 	var dashboard Dashboard
-	dashboard = Dashboard{Namespace: namespace, Url: url, Id: id, Uid: uid}
+	dashboard = Dashboard{Name: name, Url: url, Id: id, Uid: uid}
 	responseBody, err := json.Marshal(dashboard)
 
 	handleSuccess(w, responseBody)
