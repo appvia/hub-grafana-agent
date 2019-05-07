@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"text/template"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	logrus "github.com/sirupsen/logrus"
@@ -101,12 +102,15 @@ func getTemplateFromUrl(templateUrl string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	templateBody, _ = ioutil.ReadAll(resp.Body)
-	logrus.Println("Template response body:", string(templateBody))
+	if os.Getenv("DEBUG") == "true" {
+		logrus.Println("Template response body:", string(templateBody))
+	}
 	return templateBody, nil
 }
 
-func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey string) (url string, id int64, uid string, results bool, err error) {
+func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey string) (url string, id int64, uid string, version int64, found bool, err error) {
 
+	logrus.Println("Searching for dashboard using tag:", dashboardPrefix+namespace)
 	status, body, err := callGrafana(grafanaUrl+"/api/search?tag="+dashboardPrefix+namespace, grafanaApiKey, "GET", nil)
 
 	if status != 200 || err != nil {
@@ -118,20 +122,24 @@ func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey 
 		Uid string `json:"uid"`
 		Id  int64  `json:"id"`
 		Url string `json:"url"`
+		Version int64 `json:"version"`
 	}
 	var g []GrafanaDashboard
 
 	if err := json.Unmarshal(body, &g); err != nil {
 		panic(err)
 	}
+
 	if len(g) == 0 {
-		err := errors.New("dashboard not found")
-		found := false
-		return url, id, uid, found, err
+		found = false
+		return url, id, uid, version, found, err
+	} else if len(g) == 1 {
+		found = true
+		logrus.Println("Found one dashboard matching search")
 	} else if len(g) > 1 {
-		found := true
+		found = true
 		err := errors.New("more than one dashboard found")
-		return url, id, uid, found, err
+		return url, id, uid, version, found, err
 	}
 
 	dash := g[0]
@@ -139,9 +147,9 @@ func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey 
 	url = grafanaUrl + dash.Url
 	id = dash.Id
 	uid = dash.Uid
-	found := true
+	version = dash.Version
 
-	return url, id, uid, found, err
+	return url, id, uid, version, found, err
 }
 
 func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
@@ -160,9 +168,15 @@ func DashboardNamespaceDelete(w http.ResponseWriter, r *http.Request) {
 		logrus.Println("decode error:", err)
 	}
 
-	url, id, uid, results, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
+	url, id, uid, version, found, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
+	_ = version
 
-	if results == false {
+	if err != nil {
+		handleInternalServerError(w, "internal server error", "error searching for dashboard in Grafana")
+		return
+	}
+
+	if found == false {
 		_, _, _ = id, uid, url
 		handleDelete(w)
 		return
@@ -211,15 +225,16 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	grafanaUrl := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
-	url, id, uid, results, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
+	url, id, uid, version, found, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
+	_ = version
 
-	if results == false {
-		handleNotFoundError(w, "dashboard not found")
+	if err != nil {
+		handleInternalServerError(w, "internal server error", "error searching for dashboard in Grafana")
 		return
 	}
 
-	if err != nil {
-		handleInternalServerError(w, "internal server error", "error calling Grafana")
+	if found == false {
+		handleNotFoundError(w, "dashboard not found")
 		return
 	}
 
@@ -235,34 +250,21 @@ func DashboardNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func renderLocalTemplate(namespace string, id string, uid string) (renderedTemplate io.Reader, err error) {
-	type Variables struct {
-		Namespace string
-	}
-	templateVars := Variables{namespace}
-	var payload bytes.Buffer
-	tmpl := template.Must(template.ParseFiles("dashboards/kubernetes-prometheus.json.tmpl"))
-	err = tmpl.Execute(&payload, templateVars)
-	if err != nil {
-		return
-	}
-	tmpl.Execute(&payload, templateVars)
-	renderedTemplate = &payload
-	return renderedTemplate, err
-}
-
-func renderTemplate(namespace string, id string, uid string, templateAsString string) (renderedTemplate io.Reader, err error) {
+func renderTemplate(namespace string, id string, uid string, version string, templateAsString string) (renderedTemplate io.Reader, err error) {
 	type Variables struct {
 		Namespace string
 		Id        string
 		Uid       string
+		Version	  string
 	}
-	templateVars := Variables{namespace, id, uid}
+	templateVars := Variables{namespace, id, uid, version}
 	var payload bytes.Buffer
 	t := template.New("dashboard")
 	t.Parse(templateAsString)
 	err = t.Execute(&payload, templateVars)
-	t.Execute(os.Stdout, templateVars)
+	if os.Getenv("DEBUG") == "true" {
+		t.Execute(os.Stdout, templateVars)
+	}
 	if err != nil {
 		return
 	}
@@ -300,29 +302,33 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	templateUrl := t.Url
 	logrus.Println("PUT request for namespace:", namespace, "templateUrl:", templateUrl)
 	templateFromUrl, err := getTemplateFromUrl(templateUrl)
-	logrus.Println("Template body:", string(templateFromUrl))
 
 	if err != nil {
 		handleInternalServerError(w, "internal server error", "error fetching template from templateUrl")
 		return
 	}
 
-	url, id, uid, results, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
+	url, id, uid, version, found, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
 
-	var idVar, uidVar string
-	if results == false {
-		idVar, uidVar = "null", "null"
-		_ = uidVar
-		_ = idVar
+	if err != nil {
+		handleInternalServerError(w, "internal server error", "error searching for dashboard in Grafana")
+		return
+	}
+
+	var idVar, uidVar, versionVar string
+	if found == false {
+		idVar, uidVar, versionVar = "null", "null", "1"
+		logrus.Println("Dashboard not found, creating new")
 	} else {
-		idVar, uidVar = string(id), uid
-		_ = uidVar
-		_ = idVar
+		idVar, uidVar = strconv.FormatInt(id, 10), "\"" + uid + "\""
+		versionVar = strconv.FormatInt(version + 1, 10)
+		logrus.Printf("Dashboard found id: %s uid: %s version: %s", idVar, uidVar, strconv.FormatInt(version, 10))
+		logrus.Printf("Updating existing dashboard id: %s uid: %s version: %s", idVar, uidVar, versionVar)
 	}
 
 	logrus.Printf("Attempting to create dashboard for namespace %s in grafana", namespace)
 
-	renderedTemplateFromUrl, err := renderTemplate(namespace, string(idVar), uidVar, string(templateFromUrl))
+	renderedTemplateFromUrl, err := renderTemplate(namespace, idVar, uidVar, versionVar, string(templateFromUrl))
 
 	if err != nil {
 		logrus.Println(err)
