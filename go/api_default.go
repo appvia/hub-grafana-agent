@@ -12,12 +12,13 @@ package swagger
 
 import (
 	"bytes"
-	"errors"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"text/template"
 
 	"github.com/gorilla/mux"
@@ -72,6 +73,7 @@ func callGrafana(url string, apiKey string, verb string, payload io.Reader) (int
 	req, err := http.NewRequest(verb, url, payload)
 	req.Header.Set("Authorization", "Bearer"+" "+apiKey)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
@@ -125,11 +127,11 @@ func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey 
 	if len(g) == 0 {
 		err := errors.New("dashboard not found")
 		found := false
-		return  url, id, uid, found, err
+		return url, id, uid, found, err
 	} else if len(g) > 1 {
 		found := true
 		err := errors.New("more than one dashboard found")
-		return  url, id, uid, found, err
+		return url, id, uid, found, err
 	}
 
 	dash := g[0]
@@ -249,6 +251,25 @@ func renderLocalTemplate(namespace string, id string, uid string) (renderedTempl
 	return renderedTemplate, err
 }
 
+func renderTemplate(namespace string, id string, uid string, templateAsString string) (renderedTemplate io.Reader, err error) {
+	type Variables struct {
+		Namespace string
+		Id        string
+		Uid       string
+	}
+	templateVars := Variables{namespace, id, uid}
+	var payload bytes.Buffer
+	t := template.New("dashboard")
+	t.Parse(templateAsString)
+	err = t.Execute(&payload, templateVars)
+	t.Execute(os.Stdout, templateVars)
+	if err != nil {
+		return
+	}
+	renderedTemplate = &payload
+	return renderedTemplate, err
+}
+
 func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	namespace := vars["namespace"]
@@ -262,63 +283,78 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 	reqBody, err := ioutil.ReadAll(r.Body)
 
-	var useTemplateFromUrl bool
-	var templateFromUrl io.Reader
-	var templateUrl string
-	if len(reqBody) > 0 {
-		var t TemplateUrl
-		err = json.Unmarshal(reqBody, &t)
-		if err != nil || t.Url == "" {
-			logrus.Println("Malformed request body:", string(reqBody))
-			handleBadRequest(w, "request body malformed")
-			return
-		}
-		templateUrl = t.Url
-		logrus.Println("PUT request for namespace:", namespace, "templateUrl:", templateUrl)
-		templateFromUrl, err := getTemplateFromUrl(templateUrl)
-		logrus.Println("Template body:", string(templateFromUrl))
-		if err != nil {
-			handleInternalServerError(w, "internal server error", "error fetching template from templateUrl")
-			return
-		}
-		useTemplateFromUrl = true
-	} else {
-		useTemplateFromUrl = false
+	if len(reqBody) == 0 {
+		logrus.Println("Malformed request body:", string(reqBody))
+		handleBadRequest(w, "request body malformed")
+		return
+	}
+
+	var t TemplateUrl
+	err = json.Unmarshal(reqBody, &t)
+	if err != nil || t.Url == "" {
+		logrus.Println("Malformed request body:", string(reqBody))
+		handleBadRequest(w, "request body malformed")
+		return
+	}
+
+	templateUrl := t.Url
+	logrus.Println("PUT request for namespace:", namespace, "templateUrl:", templateUrl)
+	templateFromUrl, err := getTemplateFromUrl(templateUrl)
+	logrus.Println("Template body:", string(templateFromUrl))
+
+	if err != nil {
+		handleInternalServerError(w, "internal server error", "error fetching template from templateUrl")
+		return
 	}
 
 	url, id, uid, results, err := getDashboardByNamespace(namespace, grafanaUrl, grafanaApiKey)
 
+	var idVar, uidVar string
+	if results == false {
+		idVar, uidVar = "null", "null"
+		_ = uidVar
+		_ = idVar
+	} else {
+		idVar, uidVar = string(id), uid
+		_ = uidVar
+		_ = idVar
+	}
+
 	logrus.Printf("Attempting to create dashboard for namespace %s in grafana", namespace)
 
-	var status int64
-	if useTemplateFromUrl == true {
-		status, body, err := callGrafana(grafanaUrl+"/api/dashboards/db", grafanaApiKey, "POST", templateFromUrl)
-		if status != 200 || err != nil {
-			logrus.Println(err)
-			handleInternalServerError(w, "internal server error", "error creating dashboard from template: " + templateUrl)
-			return
-		}
-	}
-	if useTemplateFromUrl == false {
-		var renderedTemplate io.Reader
-		if results == true {
-			renderedTemplate, err := renderLocalTemplate(namespace, string(id), uid)
-		} else {
-			renderedTemplate, err := renderLocalTemplate(namespace, "null", "null")
-		}
-		status, body, err := callGrafana(grafanaUrl+"/api/dashboards/db", grafanaApiKey, "POST", renderedTemplate)
-	}
+	renderedTemplateFromUrl, err := renderTemplate(namespace, string(idVar), uidVar, string(templateFromUrl))
 
-	if status != 200 || err != nil {
+	if err != nil {
 		logrus.Println(err)
-		handleInternalServerError(w, "internal server error", "error creating dashboard in Grafana")
 		return
 	}
 
+	status, body, err := callGrafana(grafanaUrl+"/api/dashboards/db", grafanaApiKey, "POST", renderedTemplateFromUrl)
+
+	if status != 200 || err != nil {
+		logrus.Println(err)
+		handleInternalServerError(w, "internal server error", "error creating dashboard from template: "+templateUrl)
+		return
+	}
+
+	type GrafanaDashboard struct {
+		Uid string `json:"uid"`
+		Id  int64  `json:"id"`
+		Url string `json:"url"`
+	}
+	var g GrafanaDashboard
+	if err := json.Unmarshal(body, &g); err != nil {
+		logrus.Println(err)
+		return
+	}
+	url = grafanaUrl + g.Url
+	id = g.Id
+	uid = g.Uid
+
 	var dashboard Dashboard
 	dashboard = Dashboard{Namespace: namespace, Url: url, Id: id, Uid: uid}
-	payload, err := json.Marshal(dashboard)
+	responseBody, err := json.Marshal(dashboard)
 
-	handleSuccess(w, payload)
+	handleSuccess(w, responseBody)
 	return
 }
