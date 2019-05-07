@@ -59,21 +59,21 @@ var routes = Routes{
 	Route{
 		"DashboardNameDelete",
 		strings.ToUpper("Delete"),
-		"/api/v1beta/dashboard/{namespace}",
+		"/api/v1beta/dashboard/{name}",
 		DashboardNameDelete,
 	},
 
 	Route{
 		"DashboardNameGet",
 		strings.ToUpper("Get"),
-		"/api/v1beta/dashboard/{namespace}",
+		"/api/v1beta/dashboard/{name}",
 		DashboardNameGet,
 	},
 
 	Route{
 		"DashboardNamePut",
 		strings.ToUpper("Put"),
-		"/api/v1beta/dashboard/{namespace}",
+		"/api/v1beta/dashboard/{name}",
 		DashboardNamePut,
 	},
 
