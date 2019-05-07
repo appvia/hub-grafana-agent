@@ -19,8 +19,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"text/template"
 	"strconv"
+	"text/template"
 
 	"github.com/gorilla/mux"
 	logrus "github.com/sirupsen/logrus"
@@ -119,10 +119,10 @@ func getDashboardByNamespace(namespace string, grafanaUrl string, grafanaApiKey 
 	}
 
 	type GrafanaDashboard struct {
-		Uid string `json:"uid"`
-		Id  int64  `json:"id"`
-		Url string `json:"url"`
-		Version int64 `json:"version"`
+		Uid     string `json:"uid"`
+		Id      int64  `json:"id"`
+		Url     string `json:"url"`
+		Version int64  `json:"version"`
 	}
 	var g []GrafanaDashboard
 
@@ -255,7 +255,7 @@ func renderTemplate(namespace string, id string, uid string, version string, tem
 		Namespace string
 		Id        string
 		Uid       string
-		Version	  string
+		Version   string
 	}
 	templateVars := Variables{namespace, id, uid, version}
 	var payload bytes.Buffer
@@ -320,8 +320,8 @@ func DashboardNamespacePut(w http.ResponseWriter, r *http.Request) {
 		idVar, uidVar, versionVar = "null", "null", "1"
 		logrus.Println("Dashboard not found, creating new")
 	} else {
-		idVar, uidVar = strconv.FormatInt(id, 10), "\"" + uid + "\""
-		versionVar = strconv.FormatInt(version + 1, 10)
+		idVar, uidVar = strconv.FormatInt(id, 10), "\""+uid+"\""
+		versionVar = strconv.FormatInt(version+1, 10)
 		logrus.Printf("Dashboard found id: %s uid: %s version: %s", idVar, uidVar, strconv.FormatInt(version, 10))
 		logrus.Printf("Updating existing dashboard id: %s uid: %s version: %s", idVar, uidVar, versionVar)
 	}
