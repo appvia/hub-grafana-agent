@@ -252,10 +252,10 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 
 func renderTemplate(name string, id string, uid string, version string, templateAsString string) (renderedTemplate io.Reader, err error) {
 	type Variables struct {
-		Name string
-		Id        string
-		Uid       string
-		Version   string
+		Name    string
+		Id      string
+		Uid     string
+		Version string
 	}
 	templateVars := Variables{name, id, uid, version}
 	var payload bytes.Buffer
