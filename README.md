@@ -31,4 +31,4 @@ GLOBAL OPTIONS:
 
 #### **Grafana Authentication**
 
-In order to speak to your Grafana API you will need to provision an [API key](https://grafana.com/docs/tutorials/api_org_token_howto/)
+In order to speak to your Grafana API you will need to provision an [API key](https://grafana.com/docs/tutorials/api_org_token_howto/) with the `Admin` Grafana role.
