@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	release = "v0.0.1-rc3"
+	release = "v0.0.1"
 )
 
 func invokeServerAction(ctx *cli.Context) error {
