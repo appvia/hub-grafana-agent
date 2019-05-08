@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	release = "v0.0.1-rc1"
+	release = "v0.0.1-rc3"
 )
 
 func invokeServerAction(ctx *cli.Context) error {
@@ -81,6 +81,7 @@ func invokeServerAction(ctx *cli.Context) error {
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logrus.Infof("Request received on: " + r.URL.Path)
 		if strings.Contains(r.URL.Path, "healthz") == true {
 			next.ServeHTTP(w, r)
 			return
@@ -129,7 +130,7 @@ func main() {
 				return cli.NewExitError("Missing AUTH_TOKEN", 1)
 			}
 			os.Setenv("AUTH_TOKEN", ctx.String("auth-token"))
-			logrus.Info("Starting server...")
+			logrus.Println("Starting server on:", ctx.String("listen") + ":" + ctx.String("http-port"))
 			return invokeServerAction(ctx)
 		},
 
