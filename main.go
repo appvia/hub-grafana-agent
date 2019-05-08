@@ -130,7 +130,7 @@ func main() {
 				return cli.NewExitError("Missing AUTH_TOKEN", 1)
 			}
 			os.Setenv("AUTH_TOKEN", ctx.String("auth-token"))
-			logrus.Println("Starting server on:", ctx.String("listen") + ":" + ctx.String("http-port"))
+			logrus.Println("Starting server on:", ctx.String("listen")+":"+ctx.String("http-port"))
 			return invokeServerAction(ctx)
 		},
 
