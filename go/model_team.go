@@ -10,16 +10,12 @@
 
 package swagger
 
-// Grafana template URL
-type TemplateUrl struct {
-	// The url of a grafana template
-	Url string `json:"template_url"`
-}
-
-// Grafana template variables
-type Variables struct {
-	Name    string
-	Id      string
-	Uid     string
-	Version string
+// The definition of a team
+type Team struct {
+	// The name of this team
+	Name string `json:"name"`
+	// The email of this team
+	Email string `json:"email,omitempty"`
+	// The id of this team
+	TeamId int64 `json:"id,omitempty"`
 }
