@@ -26,6 +26,14 @@
   revision = "4024cdba0357997e76936ea8bba3c77e73478519"
 
 [[projects]]
+  digest = "1:1af58d182e3b1008d25d7ba65ff7c2631a246023d3b814f9ba8c7919aded59f3"
+  name = "github.com/sethvargo/go-password"
+  packages = ["password"]
+  pruneopts = "UT"
+  revision = "bc15c697eeda69a082991d2f1ed37660658fea32"
+  version = "v0.1.2"
+
+[[projects]]
   digest = "1:fd61cf4ae1953d55df708acb6b91492d538f49c305b364a014049914495db426"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
@@ -55,6 +63,7 @@
   input-imports = [
     "github.com/gorilla/mux",
     "github.com/pytimer/mux-logrus",
+    "github.com/sethvargo/go-password/password",
     "github.com/sirupsen/logrus",
     "github.com/urfave/cli",
   ]

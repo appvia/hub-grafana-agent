@@ -9,6 +9,14 @@ defaults: &defaults
   working_directory: /go/src/github.com/appvia/hub-grafana-agent
 
 jobs:
+  validate_swagger:
+    docker:
+      - image: circleci/node:10
+    steps:
+      - checkout
+      - run: sudo npm i -g swagger
+      - run: swagger validate api/swagger.yaml
+
   build:
     <<: *defaults
     steps:
@@ -21,4 +29,5 @@ workflows:
   version: 2
   workflow:
     jobs:
+    - validate_swagger
     - build

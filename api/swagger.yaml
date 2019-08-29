@@ -15,6 +15,8 @@ consumes:
 - "application/json"
 produces:
 - "application/json"
+security:
+- apikey: []
 paths:
   /healthz:
     get:
@@ -27,10 +29,12 @@ paths:
       responses:
         200:
           description: "Success"
+          schema:
+            $ref: "#/responses/dashboard"
         default:
           description: "A generic error returned by the api"
           schema:
-            $ref: "#/definitions/APIError"
+            $ref: "#/responses/apierror"
   /dashboards/{name}:
     parameters:
       - $ref: "#/parameters/grafana-api-key"
@@ -50,36 +54,26 @@ paths:
         200:
           description: "The specification of a dashboard"
           schema:
-            $ref: "#/definitions/Dashboard"
+            $ref: "#/responses/dashboard"
         404:
           description: "Resource not found"
           schema:
-            $ref: "#/definitions/APIError"
+            $ref: "#/responses/apierror"
         default:
           description: "A generic error returned by the api"
           schema:
-            $ref: "#/definitions/APIError"
+            $ref: "#/responses/apierror"
     put:
       summary: "Create a new dashboard for a name"
       description: "Used to create a new dashboard for a name\n"
       parameters:
-      - name: "name"
-        in: "path"
-        description: "The name for the dashboard"
-        required: true
-        type: "string"
-        x-exportParamName: "Name"
-      - name: "template_url"
-        in: "body"
-        description: "The URL of a grafana dashboard template"
-        required: true
-        schema:
-          $ref: "#/definitions/TemplateUrl"
+      - $ref: "#/parameters/name"
+      - $ref: "#/parameters/template_url"
       responses:
         200:
           description: "The specification of a dashboard"
           schema:
-            $ref: "#/definitions/Dashboard"
+            $ref: "#/responses/dashboard"
     delete:
       summary: "Delete a dashboard for a name"
       description: "Used to delete a dashboard for a name\n"
@@ -96,7 +90,23 @@ paths:
         default:
           description: "A generic error returned by the api"
           schema:
-            $ref: "#/definitions/APIError"
+            $ref: "#/responses/apierror"
+  /users:
+    put:
+      summary: "Add a user"
+      description: "Used to create a new user\n"
+      parameters:
+      - name: "user"
+        in: "body"
+        description: "The grafana user to be created"
+        required: true
+        schema:
+          $ref: "#/definitions/UserList"
+      responses:
+        200:
+          description: "The specification of a user"
+          schema:
+            $ref: "#/definitions/UserList"
 securityDefinitions:
   apikey:
     type: "apiKey"
@@ -150,14 +160,52 @@ definitions:
         type: "string"
     required:
       - template_url
+  User:
+    description: "The definition of a grafana user"
+    type: "object"
+    required:
+    - "name"
+    - "login"
+    - "email"
+    properties:
+      name:
+        type: "string"
+        description: "The name of this user"
+      login:
+        type: "string"
+        description: "The login username of this user"
+      email:
+        type: "string"
+        description: "The email of this user"
+      password:
+        type: "string"
+        description: "The password of this user, will not be returned in a get request"
+      id:
+        type: "integer"
+        description: "The user id"
+  UserList:
+    description: "The definition of a grafana user list"
+    type: "object"
+    items:
+      items:
+        type: array
+        items:
+          "$ref": "#/definitions/User"
 parameters:
   name:
     name: "name"
     in: "path"
-    description: "The name for the dashboard"
+    description: "The name of a resource"
     required: true
     type: "string"
     x-exportParamName: "Name"
+  email:
+    name: "email"
+    in: "path"
+    description: "Email address of a user"
+    required: true
+    type: "string"
+    x-exportParamName: "Email"
   template_url:
     name: "template_url"
     in: "body"
@@ -165,22 +213,28 @@ parameters:
     schema:
       "$ref": "#/definitions/TemplateUrl"
   grafana-api-key:
-    name: X-Grafana-API-Key
-    description: An API key used for requests to the Grafana API
-    in: header
-    type: string
+    name: "X-Grafana-API-Key"
+    description: "An API key used for requests to the Grafana API"
+    in: "header"
+    type: "string"
     required: true
   grafana-url:
-    name: X-Grafana-URL
-    description: The URL of the Grafana instance
-    in: header
-    type: string
+    name: "X-Grafana-URL"
+    description: "The URL of the Grafana instance"
+    in: "header"
+    type: "string"
     required: true
   grafana-ca-cert:
-    name: X-Grafana-CA
-    description: Base64 encoded CA certificate for requests to Grafana API
-    in: header
-    type: string
+    name: "X-Grafana-CA"
+    description: "Base64 encoded CA certificate for requests to Grafana API"
+    in: "header"
+    type: "string"
+    required: true
+  grafana-basic-auth:
+    name: "X-Grafana-Basic-Auth"
+    description: "Admin basic auth credentials"
+    in: "header"
+    type: "string"
     required: true
 responses:
   apierror:
@@ -191,5 +245,3 @@ responses:
     description: "The specification of a dashboard"
     schema:
       $ref: "#/definitions/Dashboard"
-  notfound:
-    description: "The resource does not exist"

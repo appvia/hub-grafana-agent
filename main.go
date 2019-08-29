@@ -81,12 +81,23 @@ func invokeServerAction(ctx *cli.Context) error {
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logrus.Infof("Request received on: " + r.URL.Path)
+		logrus.Infof("Request received on: %s", r.URL.Path)
+
+		logrus.Debugln("--- DEBUG headers start ---")
+		logrus.Debugln("X-Grafana-URL:" + r.Header.Get("X-Grafana-URL"))
+		logrus.Debugln("X-Grafana-Basic-Auth:" + r.Header.Get("X-Grafana-Basic-Auth"))
+		logrus.Debugln("X-Grafana-API-Key:" + r.Header.Get("X-Grafana-API-Key"))
+		logrus.Debugln("X-Grafana-CA:" + r.Header.Get("X-Grafana-CA"))
+		logrus.Debugln("Authorization:" + r.Header.Get("Authorization"))
+		logrus.Debugln("--- DEBUG headers end ---")
+
 		if strings.Contains(r.URL.Path, "healthz") == true {
 			next.ServeHTTP(w, r)
 			return
 		}
+
 		tokenHeader := r.Header.Get("Authorization")
+
 		if len(tokenHeader) == 0 {
 			logrus.Infof("Missing Authorization header")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -98,7 +109,12 @@ func Middleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if r.Header.Get("X-Grafana-URL") == "" || r.Header.Get("X-Grafana-API-Key") == "" || r.Header.Get("X-Grafana-CA") == "" {
+		if r.Header.Get("X-Grafana-Basic-Auth") == "" && r.Header.Get("X-Grafana-API-Key") == "" {
+			logrus.Infof("Missing Grafana authentication")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Header.Get("X-Grafana-URL") == "" || r.Header.Get("X-Grafana-CA") == "" {
 			logrus.Infof("Missing Grafana header")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -128,6 +144,10 @@ func main() {
 		Action: func(ctx *cli.Context) error {
 			if ctx.String("auth-token") == "" {
 				return cli.NewExitError("Missing AUTH_TOKEN", 1)
+			}
+			if ctx.Bool("debug") {
+				logrus.SetLevel(logrus.DebugLevel)
+				logrus.Debugln("DEBUG mode enabled")
 			}
 			os.Setenv("AUTH_TOKEN", ctx.String("auth-token"))
 			logrus.Println("Starting server on:", ctx.String("listen")+":"+ctx.String("http-port"))
@@ -167,6 +187,11 @@ func main() {
 				Name:   "tls-key",
 				Usage:  "the path to the file containing the private key pem `PATH`",
 				EnvVar: "TLS_KEY",
+			},
+			cli.BoolFlag{
+				Name:   "debug",
+				Usage:  "enable debug logging",
+				EnvVar: "DEBUG",
 			},
 		},
 	}

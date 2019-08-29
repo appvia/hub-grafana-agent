@@ -78,6 +78,27 @@ var routes = Routes{
 	},
 
 	Route{
+		"UserGet",
+		strings.ToUpper("Get"),
+		"/api/v1beta/users/{email}",
+		UserGet,
+	},
+
+	Route{
+		"UserDelete",
+		strings.ToUpper("Delete"),
+		"/api/v1beta/users/{email}",
+		UserDelete,
+	},
+
+	Route{
+		"UsersPut",
+		strings.ToUpper("Put"),
+		"/api/v1beta/users",
+		UsersPut,
+	},
+
+	Route{
 		"HealthzGet",
 		strings.ToUpper("Get"),
 		"/api/v1beta/healthz",
