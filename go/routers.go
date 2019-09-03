@@ -85,13 +85,6 @@ var routes = Routes{
 	},
 
 	Route{
-		"UserDelete",
-		strings.ToUpper("Delete"),
-		"/api/v1beta/users/{email}",
-		UserDelete,
-	},
-
-	Route{
 		"UsersPut",
 		strings.ToUpper("Put"),
 		"/api/v1beta/users",

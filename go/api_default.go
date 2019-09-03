@@ -12,6 +12,8 @@ package swagger
 
 import (
 	"bytes"
+	"crypto/x509"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -68,7 +70,7 @@ func handleNotFoundError(w http.ResponseWriter, detail string) {
 	w.Write(payload)
 }
 
-func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []byte, error) {
+func callGrafana(admin bool, url, auth string, grafanaCaCert []byte, verb string, payload io.Reader) (int, []byte, error) {
 	var statusCode int
 	var body []byte
 	var err error
@@ -97,7 +99,27 @@ func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []
 	req.Header.Set("Authorization", authKey+" "+auth)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
+
+	rootCAs, _ := x509.SystemCertPool()
+	if rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+
+	if err != nil {
+		logrus.Fatalf("Failed to append %q to RootCAs: %v", grafanaCaCert, err)
+	}
+
+	if ok := rootCAs.AppendCertsFromPEM([]byte(grafanaCaCert)); !ok {
+		logrus.Println("No certs appended, using system certs only")
+	}
+
+	config := &tls.Config{
+		InsecureSkipVerify: false,
+		RootCAs:            rootCAs,
+	}
+	tr := &http.Transport{TLSClientConfig: config}
+	client := &http.Client{Transport: tr}
+
 	resp, err := client.Do(req)
 
 	if err != nil {
@@ -139,10 +161,10 @@ func getTemplateFromUrl(templateUrl string) ([]byte, error) {
 	return templateBody, nil
 }
 
-func getDashboardByName(name, grafanaURL, grafanaApiKey string) (url string, id int64, uid string, version int64, found bool, err error) {
+func getDashboardByName(name, grafanaURL, grafanaApiKey string, grafanaCaCert []byte) (url string, id int64, uid string, version int64, found bool, err error) {
 
 	logrus.Println("Searching for dashboard using tag:", dashboardPrefix+name)
-	status, body, err := callGrafana(false, grafanaURL+"/api/search?tag="+dashboardPrefix+name, grafanaApiKey, "GET", nil)
+	status, body, err := callGrafana(false, grafanaURL+"/api/search?tag="+dashboardPrefix+name, grafanaApiKey, grafanaCaCert, "GET", nil)
 
 	if status != 200 || err != nil {
 		logrus.Println("Error getting dashboard for name:", name)
@@ -176,8 +198,8 @@ func getDashboardByName(name, grafanaURL, grafanaApiKey string) (url string, id 
 	return url, id, uid, version, found, err
 }
 
-func createUser(user User, grafanaURL, auth string) (createdUser User, err error) {
-	user, found, err := getUserByEmail(user.Email, grafanaURL, auth)
+func createUser(user User, grafanaURL, auth string, grafanaCaCert []byte) (createdUser User, err error) {
+	user, found, err := getUserByEmail(user.Email, grafanaURL, auth, grafanaCaCert)
 
 	if found {
 		logrus.Printf("User %s exists already", user.Email)
@@ -192,21 +214,21 @@ func createUser(user User, grafanaURL, auth string) (createdUser User, err error
 
 	payloadReader := bytes.NewReader(payload)
 
-	status, _, err := callGrafana(true, grafanaURL+"/api/admin/users", auth, "POST", payloadReader)
+	status, _, err := callGrafana(true, grafanaURL+"/api/admin/users", auth, grafanaCaCert, "POST", payloadReader)
 
 	if status != 200 || err != nil {
 		logrus.Println("Error creating user")
 		return user, err
 	}
 
-	createdUser, _, err = getUserByEmail(user.Email, grafanaURL, auth)
+	createdUser, _, err = getUserByEmail(user.Email, grafanaURL, auth, grafanaCaCert)
 
 	return createdUser, nil
 }
 
-func createTeam(teamName, grafanaURL, auth string) (team Team, err error) {
+func createTeam(teamName, grafanaURL, auth string, grafanaCaCert []byte) (team Team, err error) {
 
-	team, found, err := getTeamByName(teamName, grafanaURL, auth)
+	team, found, err := getTeamByName(teamName, grafanaURL, auth, grafanaCaCert)
 
 	if err == nil && found == true {
 		return team, nil
@@ -216,7 +238,7 @@ func createTeam(teamName, grafanaURL, auth string) (team Team, err error) {
 	teamObject, err := json.Marshal(newTeam)
 	payloadReader := bytes.NewReader(teamObject)
 
-	status, body, err := callGrafana(true, grafanaURL+"/api/teams", auth, "POST", payloadReader)
+	status, body, err := callGrafana(true, grafanaURL+"/api/teams", auth, grafanaCaCert, "POST", payloadReader)
 
 	if err != nil {
 		logrus.Println("Error creating team: " + err.Error())
@@ -234,10 +256,10 @@ func createTeam(teamName, grafanaURL, auth string) (team Team, err error) {
 	return teamResponse, nil
 }
 
-func getUserByEmail(email, grafanaURL, auth string) (user User, found bool, err error) {
+func getUserByEmail(email, grafanaURL, auth string, grafanaCaCert []byte) (user User, found bool, err error) {
 	logrus.Println("Searching for user using email:", email)
 
-	status, body, err := callGrafana(true, grafanaURL+"/api/users/lookup?loginOrEmail="+email, auth, "GET", nil)
+	status, body, err := callGrafana(true, grafanaURL+"/api/users/lookup?loginOrEmail="+email, auth, grafanaCaCert, "GET", nil)
 
 	if err != nil {
 		logrus.Println("Error getting user for email:", email)
@@ -258,10 +280,10 @@ func getUserByEmail(email, grafanaURL, auth string) (user User, found bool, err 
 	}
 }
 
-func deleteUserByEmail(email, grafanaURL, auth string) (err error) {
+func deleteUserByEmail(email, grafanaURL, auth string, grafanaCaCert []byte) (err error) {
 	logrus.Println("Searching for user using email:", email)
 
-	user, found, err := getUserByEmail(email, grafanaURL, auth)
+	user, found, err := getUserByEmail(email, grafanaURL, auth, grafanaCaCert)
 
 	if err != nil {
 		logrus.Println("Error deleting user for email:", email)
@@ -274,7 +296,7 @@ func deleteUserByEmail(email, grafanaURL, auth string) (err error) {
 	}
 
 	logrus.Println("User found, deleting...")
-	status, _, err := callGrafana(true, grafanaURL+"/api/admin/users/"+strconv.FormatInt(user.Id, 10), auth, "DELETE", nil)
+	status, _, err := callGrafana(true, grafanaURL+"/api/admin/users/"+strconv.FormatInt(user.Id, 10), auth, grafanaCaCert, "DELETE", nil)
 
 	if err != nil || status != 200 {
 		return err
@@ -282,7 +304,7 @@ func deleteUserByEmail(email, grafanaURL, auth string) (err error) {
 	return
 }
 
-func addUserToTeam(user User, team Team, grafanaURL, auth string) (err error) {
+func addUserToTeam(user User, team Team, grafanaURL, auth string, grafanaCaCert []byte) (err error) {
 	logrus.Printf("Adding user %s to team %s", user.Email, team.Name)
 
 	member := TeamMember{UserId: user.Id}
@@ -292,7 +314,7 @@ func addUserToTeam(user User, team Team, grafanaURL, auth string) (err error) {
 
 	memberPayload := bytes.NewReader(memberObject)
 
-	status, _, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, "POST", memberPayload)
+	status, _, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, grafanaCaCert, "POST", memberPayload)
 
 	if err != nil {
 		logrus.Printf("Error adding user to team %s", teamId)
@@ -317,12 +339,12 @@ func addUserToTeam(user User, team Team, grafanaURL, auth string) (err error) {
 	return
 }
 
-func checkTeamMembership(email string, team Team, grafanaURL, auth string) (user User, found bool, err error) {
+func checkTeamMembership(email string, team Team, grafanaURL, auth string, grafanaCaCert []byte) (user User, found bool, err error) {
 	logrus.Printf("Checking user %s is in team %s:", email, team.Name)
 
 	teamId := strconv.FormatInt(team.TeamId, 10)
 
-	status, body, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, "GET", nil)
+	status, body, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, grafanaCaCert, "GET", nil)
 
 	if err != nil || status != 200 {
 		logrus.Println("Error checking team membership")
@@ -343,12 +365,12 @@ func checkTeamMembership(email string, team Team, grafanaURL, auth string) (user
 	}
 }
 
-func getTeamMembers(team Team, grafanaURL, auth string) (users []User, err error) {
+func getTeamMembers(team Team, grafanaURL, auth string, grafanaCaCert []byte) (users []User, err error) {
 	logrus.Printf("Getting members of team: %s", team.Name)
 
 	teamId := strconv.FormatInt(team.TeamId, 10)
 
-	status, body, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, "GET", nil)
+	status, body, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, grafanaCaCert, "GET", nil)
 
 	logrus.Println("Response from membership list:")
 	logrus.Println(string(body))
@@ -362,7 +384,7 @@ func getTeamMembers(team Team, grafanaURL, auth string) (users []User, err error
 	err = json.Unmarshal(body, &members)
 
 	for _, m := range members {
-		user, _, err := getUserByEmail(m.Email, grafanaURL, auth)
+		user, _, err := getUserByEmail(m.Email, grafanaURL, auth, grafanaCaCert)
 		if err != nil {
 			return users, err
 		}
@@ -376,10 +398,10 @@ func getTeamMembers(team Team, grafanaURL, auth string) (users []User, err error
 	return users, nil
 }
 
-func getTeamByName(name, grafanaURL, auth string) (team Team, found bool, err error) {
+func getTeamByName(name, grafanaURL, auth string, grafanaCaCert []byte) (team Team, found bool, err error) {
 	logrus.Println("Searching for team by name:", name)
 
-	status, body, err := callGrafana(true, grafanaURL+"/api/teams/search?name="+name, auth, "GET", nil)
+	status, body, err := callGrafana(true, grafanaURL+"/api/teams/search?name="+name, auth, grafanaCaCert, "GET", nil)
 
 	if err != nil {
 		logrus.Println("Error getting team with the name:", name)
@@ -417,11 +439,92 @@ func getTeamByName(name, grafanaURL, auth string) (team Team, found bool, err er
 	}
 }
 
+func renderTemplate(name, id, uid, version, templateAsString string) (renderedTemplate io.Reader, err error) {
+	templateVars := Variables{name, id, uid, version}
+	var payload bytes.Buffer
+	t := template.New("dashboard")
+	t.Parse(templateAsString)
+	err = t.Execute(&payload, templateVars)
+
+	logrus.Debugln("Rendered dashboard template:")
+	logrus.Debugln(t.Execute(os.Stdout, templateVars))
+
+	if err != nil {
+		return
+	}
+	renderedTemplate = &payload
+	return renderedTemplate, err
+}
+
+func userInList(user User, list []User) bool {
+	for _, u := range list {
+		if u.Id == user.Id {
+			return true
+		}
+	}
+	return false
+}
+
+func removeUserFromTeam(user User, team Team, grafanaURL, auth string, grafanaCaCert []byte) (err error) {
+	status, _, err := callGrafana(true, grafanaURL+"/api/teams/"+strconv.FormatInt(team.TeamId, 10)+"/members/"+strconv.FormatInt(user.Id, 10), auth, grafanaCaCert, "DELETE", nil)
+
+	if err != nil {
+		logrus.Printf("Error removing user %s from team %s", user.Name, team.Name)
+		return
+	}
+
+	if status == 404 {
+		logrus.Printf("User not in team")
+		return nil
+	}
+
+	if status == 200 {
+		logrus.Printf("User %s removed from team %s", user.Name, team.Name)
+		return nil
+	}
+	return
+}
+
+func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name := vars["name"]
+
+	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+	if err != nil {
+		logrus.Println("decode error:", err)
+	}
+	grafanaURL := r.Header.Get("X-Grafana-Url")
+	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
+
+	url, id, uid, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey, grafanaCaCert)
+
+	if err != nil {
+		handleInternalServerError(w, "internal server error", "error searching for dashboard in Grafana")
+		return
+	}
+
+	if found == false {
+		handleNotFoundError(w, "dashboard not found")
+		return
+	}
+
+	var dashboard GrafanaDashboard
+	dashboard = GrafanaDashboard{Name: name, Url: url, Id: id, Uid: uid}
+	payload, err := json.Marshal(dashboard)
+
+	if err != nil {
+		logrus.Println(err)
+	}
+
+	handleSuccess(w, payload)
+	return
+}
+
 func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
 		logrus.Println("decode error:", err)
 	}
@@ -432,7 +535,7 @@ func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 		logrus.Println("decode error:", err)
 	}
 
-	url, id, uid, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey)
+	url, id, uid, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey, grafanaCaCert)
 
 	if err != nil {
 		handleInternalServerError(w, "internal server error", "error searching for dashboard in Grafana")
@@ -458,7 +561,7 @@ func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 
 	logrus.Printf("Attempting to delete dashboard with uid %s", string(uid))
 
-	status, _, err := callGrafana(false, grafanaURL+"/api/dashboards/uid/"+uid, grafanaApiKey, "DELETE", nil)
+	status, _, err := callGrafana(false, grafanaURL+"/api/dashboards/uid/"+uid, grafanaApiKey, grafanaCaCert, "DELETE", nil)
 
 	if err != nil {
 		handleInternalServerError(w, "internal server error", "error deleting dashboard from Grafana")
@@ -475,63 +578,11 @@ func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	name := vars["name"]
-
-	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
-	if err != nil {
-		logrus.Println("decode error:", err)
-	}
-	grafanaURL := r.Header.Get("X-Grafana-Url")
-	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
-
-	url, id, uid, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey)
-
-	if err != nil {
-		handleInternalServerError(w, "internal server error", "error searching for dashboard in Grafana")
-		return
-	}
-
-	if found == false {
-		handleNotFoundError(w, "dashboard not found")
-		return
-	}
-
-	var dashboard GrafanaDashboard
-	dashboard = GrafanaDashboard{Name: name, Url: url, Id: id, Uid: uid}
-	payload, err := json.Marshal(dashboard)
-
-	if err != nil {
-		logrus.Println(err)
-	}
-
-	handleSuccess(w, payload)
-	return
-}
-
-func renderTemplate(name, id, uid, version, templateAsString string) (renderedTemplate io.Reader, err error) {
-	templateVars := Variables{name, id, uid, version}
-	var payload bytes.Buffer
-	t := template.New("dashboard")
-	t.Parse(templateAsString)
-	err = t.Execute(&payload, templateVars)
-
-	logrus.Debugln("Rendered dashboard template:")
-	logrus.Debugln(t.Execute(os.Stdout, templateVars))
-
-	if err != nil {
-		return
-	}
-	renderedTemplate = &payload
-	return renderedTemplate, err
-}
-
 func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
 		logrus.Println("decode error:", err)
 	}
@@ -562,7 +613,7 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, id, uid, version, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey)
+	url, id, uid, version, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey, grafanaCaCert)
 
 	if err != nil {
 		handleInternalServerError(w, "internal server error", "error searching for dashboard in Grafana")
@@ -589,7 +640,7 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, body, err := callGrafana(false, grafanaURL+"/api/dashboards/db", grafanaApiKey, "POST", renderedTemplateFromUrl)
+	status, body, err := callGrafana(false, grafanaURL+"/api/dashboards/db", grafanaApiKey, grafanaCaCert, "POST", renderedTemplateFromUrl)
 
 	if status != 200 || err != nil {
 		logrus.Println(err)
@@ -614,11 +665,12 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+
 func UserGet(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	email := vars["email"]
 
-	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
 		logrus.Println("decode error:", err)
 	}
@@ -627,7 +679,7 @@ func UserGet(w http.ResponseWriter, r *http.Request) {
 
 	logrus.Println("Getting user by email:", email)
 
-	user, found, err := getUserByEmail(email, grafanaURL, grafanaBasicAuth)
+	user, found, err := getUserByEmail(email, grafanaURL, grafanaBasicAuth, grafanaCaCert)
 
 	if err != nil {
 		logrus.Println("Error getting user for email:", email)
@@ -644,76 +696,11 @@ func UserGet(w http.ResponseWriter, r *http.Request) {
 	handleSuccess(w, responseBody)
 }
 
-func UserDelete(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	email := vars["email"]
-
-	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
-	if err != nil {
-		logrus.Println("decode error:", err)
-	}
-	grafanaURL := r.Header.Get("X-Grafana-Url")
-	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
-
-	logrus.Println("Getting user by email:", email)
-
-	user, found, err := getUserByEmail(email, grafanaURL, grafanaBasicAuth)
-
-	if err != nil {
-		logrus.Println("Error getting user for email: " + email)
-		handleInternalServerError(w, "internal server error", "error checking user existence: "+user.Email)
-	}
-
-	if found == false {
-		logrus.Println("Delete request for non existent user:", email)
-		handleDelete(w)
-		return
-	}
-
-	err = deleteUserByEmail(email, grafanaURL, grafanaBasicAuth)
-
-	if err != nil {
-		handleInternalServerError(w, "internal server error", "error deleting user: "+email)
-	}
-	handleDelete(w)
-}
-
-func userInList(user User, list []User) bool {
-	for _, u := range list {
-		if u.Id == user.Id {
-			return true
-		}
-	}
-	return false
-}
-
-func removeUserFromTeam(user User, team Team, grafanaURL, auth string) (err error) {
-	status, _, err := callGrafana(true, grafanaURL+"/api/teams/"+strconv.FormatInt(team.TeamId, 10)+"/members/"+strconv.FormatInt(user.Id, 10), auth, "DELETE", nil)
-
-	if err != nil {
-		logrus.Printf("Error removing user %s from team %s", user.Name, team.Name)
-		return
-	}
-
-	if status == 404 {
-		logrus.Printf("User not in team")
-		return nil
-	}
-
-	if status == 200 {
-		logrus.Printf("User %s removed from team %s", user.Name, team.Name)
-		return nil
-	}
-	return
-}
-
 func UsersPut(w http.ResponseWriter, r *http.Request) {
-	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
-
+	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
 		logrus.Println("decode error:", err)
 	}
-
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
 	reqBody, err := ioutil.ReadAll(r.Body)
@@ -734,10 +721,10 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create team if it doesnt exist
-	team, err := createTeam(teamName, grafanaURL, grafanaBasicAuth)
+	team, err := createTeam(teamName, grafanaURL, grafanaBasicAuth, grafanaCaCert)
 
 	// List the users in the team
-	usersInTeam, err := getTeamMembers(team, grafanaURL, grafanaBasicAuth)
+	usersInTeam, err := getTeamMembers(team, grafanaURL, grafanaBasicAuth, grafanaCaCert)
 
 	logrus.Println("Listing users in the team")
 	logrus.Println(usersInTeam)
@@ -745,7 +732,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 	// Delete any members who are in the team but not the PUT payload
 	for _, u := range usersInTeam {
 		if userInList(u, users) == false {
-			err = removeUserFromTeam(u, team, grafanaURL, grafanaBasicAuth)
+			err = removeUserFromTeam(u, team, grafanaURL, grafanaBasicAuth, grafanaCaCert)
 			if err != nil {
 				handleInternalServerError(w, "Error removing user: "+u.Email+" from team: "+team.Name+" error: ", err.Error())
 			}
@@ -758,7 +745,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 	for _, u := range users {
 
 		// Create global users for each email in the PUT payload
-		user, err := createUser(u, grafanaURL, grafanaBasicAuth)
+		user, err := createUser(u, grafanaURL, grafanaBasicAuth, grafanaCaCert)
 
 		if err != nil {
 			handleInternalServerError(w, "Error creating user: "+u.Email, err.Error())
@@ -770,7 +757,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 
 		// Add the user to the team if they arent already in it
 		logrus.Printf("Adding user with id %s to team %s", strconv.FormatInt(user.Id, 10), strconv.FormatInt(team.TeamId, 10))
-		err = addUserToTeam(user, team, grafanaURL, grafanaBasicAuth)
+		err = addUserToTeam(user, team, grafanaURL, grafanaBasicAuth, grafanaCaCert)
 
 		if err != nil {
 			handleInternalServerError(w, "Error adding user: "+u.Email+" to team: "+team.Name, err.Error())
