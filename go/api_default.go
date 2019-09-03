@@ -109,8 +109,10 @@ func callGrafana(admin bool, url, auth string, grafanaCaCert []byte, verb string
 		logrus.Fatalf("Failed to append %q to RootCAs: %v", grafanaCaCert, err)
 	}
 
-	if ok := rootCAs.AppendCertsFromPEM([]byte(grafanaCaCert)); !ok {
-		logrus.Println("No certs appended, using system certs only")
+	if grafanaCaCert != nil {
+		if ok := rootCAs.AppendCertsFromPEM([]byte(grafanaCaCert)); !ok {
+			logrus.Println("No certs appended, using system certs only")
+		}
 	}
 
 	config := &tls.Config{
@@ -489,9 +491,13 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
-	if err != nil {
-		logrus.Println("decode error:", err)
+	var grafanaCaCert []byte
+	var err error
+    if r.Header.Get("X-Grafana-CA") != "" {
+		grafanaCaCert, err = base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+		if err != nil {
+			logrus.Println("decode error:", err)
+		}
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
@@ -523,17 +529,16 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
-
-	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
-	if err != nil {
-		logrus.Println("decode error:", err)
+	var grafanaCaCert []byte
+	var err error
+    if r.Header.Get("X-Grafana-CA") != "" {
+		grafanaCaCert, err = base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+		if err != nil {
+			logrus.Println("decode error:", err)
+		}
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
-
-	if err != nil {
-		logrus.Println("decode error:", err)
-	}
 
 	url, id, uid, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey, grafanaCaCert)
 
@@ -582,9 +587,13 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
-	if err != nil {
-		logrus.Println("decode error:", err)
+	var grafanaCaCert []byte
+	var err error
+    if r.Header.Get("X-Grafana-CA") != "" {
+		grafanaCaCert, err = base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+		if err != nil {
+			logrus.Println("decode error:", err)
+		}
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
@@ -670,9 +679,13 @@ func UserGet(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	email := vars["email"]
 
-	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
-	if err != nil {
-		logrus.Println("decode error:", err)
+	var grafanaCaCert []byte
+	var err error
+    if r.Header.Get("X-Grafana-CA") != "" {
+		grafanaCaCert, err = base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+		if err != nil {
+			logrus.Println("decode error:", err)
+		}
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
@@ -697,9 +710,13 @@ func UserGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func UsersPut(w http.ResponseWriter, r *http.Request) {
-	grafanaCaCert, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
-	if err != nil {
-		logrus.Println("decode error:", err)
+	var grafanaCaCert []byte
+	var err error
+    if r.Header.Get("X-Grafana-CA") != "" {
+		grafanaCaCert, err = base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+		if err != nil {
+			logrus.Println("decode error:", err)
+		}
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")

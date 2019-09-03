@@ -229,7 +229,6 @@ parameters:
     description: "Base64 encoded CA certificate for requests to Grafana API"
     in: "header"
     type: "string"
-    required: true
   grafana-basic-auth:
     name: "X-Grafana-Basic-Auth"
     description: "Admin basic auth credentials"
