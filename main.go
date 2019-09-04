@@ -84,11 +84,11 @@ func Middleware(next http.Handler) http.Handler {
 		logrus.Infof("Request received on: %s", r.URL.Path)
 
 		logrus.Debugln("--- DEBUG headers start ---")
-		logrus.Debugln("X-Grafana-URL:" + r.Header.Get("X-Grafana-URL"))
-		logrus.Debugln("X-Grafana-Basic-Auth:" + r.Header.Get("X-Grafana-Basic-Auth"))
-		logrus.Debugln("X-Grafana-API-Key:" + r.Header.Get("X-Grafana-API-Key"))
-		logrus.Debugln("X-Grafana-CA:" + r.Header.Get("X-Grafana-CA"))
-		logrus.Debugln("Authorization:" + r.Header.Get("Authorization"))
+		logrus.Debugln("X-Grafana-URL: " + r.Header.Get("X-Grafana-URL"))
+		logrus.Debugln("X-Grafana-Basic-Auth: " + r.Header.Get("X-Grafana-Basic-Auth"))
+		logrus.Debugln("X-Grafana-API-Key: " + r.Header.Get("X-Grafana-API-Key"))
+		logrus.Debugln("X-Grafana-CA: " + r.Header.Get("X-Grafana-CA"))
+		logrus.Debugln("Authorization: " + r.Header.Get("Authorization"))
 		logrus.Debugln("--- DEBUG headers end ---")
 
 		if strings.Contains(r.URL.Path, "healthz") == true {
@@ -148,6 +148,8 @@ func main() {
 			if ctx.Bool("debug") {
 				logrus.SetLevel(logrus.DebugLevel)
 				logrus.Debugln("DEBUG mode enabled")
+			} else {
+				logrus.SetLevel(logrus.InfoLevel)
 			}
 			os.Setenv("AUTH_TOKEN", ctx.String("auth-token"))
 			logrus.Println("Starting server on:", ctx.String("listen")+":"+ctx.String("http-port"))

@@ -89,10 +89,10 @@ func callGrafana(admin bool, url, auth string, grafanaCaCert []byte, verb string
 
 	var authKey string
 	if admin {
-		logrus.Print("Using basic auth")
+		logrus.Debugln("Using basic auth")
 		authKey = "Basic"
 	} else {
-		logrus.Print("Using bearer auth")
+		logrus.Debugln("Using bearer auth")
 		authKey = "Bearer"
 	}
 
@@ -111,7 +111,7 @@ func callGrafana(admin bool, url, auth string, grafanaCaCert []byte, verb string
 
 	if grafanaCaCert != nil {
 		if ok := rootCAs.AppendCertsFromPEM([]byte(grafanaCaCert)); !ok {
-			logrus.Println("No certs appended, using system certs only")
+			logrus.Debugln("No CA supplied, using system CA only")
 		}
 	}
 
@@ -251,8 +251,8 @@ func createTeam(teamName, grafanaURL, auth string, grafanaCaCert []byte) (team T
 	err = json.Unmarshal(body, &grafanaResponse)
 
 	if status != 200 && status != 409 {
-		logrus.Println("Error creating team: " + teamName + "response status from grafana: " + strconv.Itoa(status))
-		return team, errors.New("Error creating team:" + teamName)
+		logrus.Println("Error creating team: " + teamName + ", response status from grafana: " + strconv.Itoa(status))
+		return team, errors.New("Error creating team: " + teamName)
 	}
 	teamResponse := Team{Name: teamName, TeamId: grafanaResponse.TeamId}
 	return teamResponse, nil
@@ -739,6 +739,11 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 
 	// Create team if it doesnt exist
 	team, err := createTeam(teamName, grafanaURL, grafanaBasicAuth, grafanaCaCert)
+
+	if err != nil {
+		handleInternalServerError(w, "Couldnt update users", err.Error())
+		return
+	}
 
 	// List the users in the team
 	usersInTeam, err := getTeamMembers(team, grafanaURL, grafanaBasicAuth, grafanaCaCert)
