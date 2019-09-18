@@ -177,7 +177,7 @@ func createUser(user User, grafanaURL, auth string) (createdUser User, err error
 
 	if found {
 		logrus.Printf("User %s exists already", existingUser.Email)
-		return user, nil
+		return existingUser, nil
 	}
 
 	payload, err := json.Marshal(user)
