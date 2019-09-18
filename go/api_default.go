@@ -92,12 +92,12 @@ func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []
 	defer resp.Body.Close()
 
 	if err != nil {
-		logrus.Println("Error calling Grafana:", verb, url, err)
+		logrus.Errorln("Error calling Grafana:", verb, url, err)
 	} else {
 		body, _ = ioutil.ReadAll(resp.Body)
 		statusCode = resp.StatusCode
-		logrus.Printf("Response body from Grafana: %s", string(body))
-		logrus.Printf("Response code from Grafana: %v", statusCode)
+		logrus.Debugf("Response body from Grafana: %s", string(body))
+		logrus.Debugf("Response code from Grafana: %v", statusCode)
 	}
 	return statusCode, body, err
 }
