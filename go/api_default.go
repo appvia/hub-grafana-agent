@@ -85,10 +85,10 @@ func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []
 	var authKey string
 
 	if admin {
-		logrus.Print("Using basic auth")
+		logrus.Debugln("Using basic auth")
 		authKey = "Basic"
 	} else {
-		logrus.Print("Using bearer auth")
+		logrus.Debugln("Using bearer auth")
 		authKey = "Bearer"
 	}
 
