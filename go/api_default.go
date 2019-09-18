@@ -312,7 +312,7 @@ func addUserToTeam(user User, team Team, grafanaURL, auth string) (err error) {
 	status, _, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, "POST", memberPayload)
 
 	if err != nil {
-		logrus.Infof("Error adding user to team %s", teamId)
+		logrus.Errorf("Error adding user to team %s", teamId)
 		return
 	}
 
@@ -320,7 +320,7 @@ func addUserToTeam(user User, team Team, grafanaURL, auth string) (err error) {
 		logrus.Infof("User %s added to team %s", strconv.FormatInt(user.Id, 10), teamId)
 		return
 	} else {
-		logrus.Infof("Error adding user %s to team %s", strconv.FormatInt(user.Id, 10), teamId)
+		logrus.Errorf("Error adding user %s to team %s", strconv.FormatInt(user.Id, 10), teamId)
 		return
 	}
 }
@@ -333,7 +333,7 @@ func checkTeamMembership(email string, team Team, grafanaURL, auth string) (user
 	status, body, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, "GET", nil)
 
 	if err != nil || status != 200 {
-		logrus.Infoln("Error checking team membership")
+		logrus.Errorln("Error checking team membership")
 		return
 	}
 
@@ -362,7 +362,7 @@ func getTeamMembers(team Team, grafanaURL, auth string) (users []User, err error
 	logrus.Infoln(string(body))
 
 	if err != nil || status != 200 {
-		logrus.Infoln("Error checking team membership")
+		logrus.Errorln("Error checking team membership")
 		return users, err
 	}
 
@@ -390,7 +390,7 @@ func getTeamByName(name, grafanaURL, auth string) (team Team, found bool, err er
 	status, body, err := callGrafana(true, grafanaURL+"/api/teams/search?name="+name, auth, "GET", nil)
 
 	if err != nil {
-		logrus.Infoln("Error getting team with the name:", name)
+		logrus.Errorln("Error getting team with the name:", name)
 		return
 	}
 
@@ -398,7 +398,7 @@ func getTeamByName(name, grafanaURL, auth string) (team Team, found bool, err er
 	err = json.Unmarshal(body, &g)
 
 	if err != nil {
-		logrus.Infoln("Error getting team with the name:", name)
+		logrus.Errorln("Error getting team with the name:", name)
 		return
 	}
 
@@ -413,7 +413,7 @@ func getTeamByName(name, grafanaURL, auth string) (team Team, found bool, err er
 	if status == 200 && len(g.Teams) == 1 {
 		t = g.Teams[0]
 		if err != nil {
-			logrus.Infoln("Error getting team with the name:", name)
+			logrus.Errorln("Error getting team with the name:", name)
 		}
 		logrus.Infoln("Team found")
 		found = true
@@ -431,13 +431,13 @@ func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Infoln("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	if err != nil {
-		logrus.Infoln("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 
 	url, id, uid, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey)
@@ -541,7 +541,7 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Infoln("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
@@ -628,7 +628,7 @@ func UserGet(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Infoln("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
@@ -638,7 +638,7 @@ func UserGet(w http.ResponseWriter, r *http.Request) {
 	user, found, err := getUserByEmail(email, grafanaURL, grafanaBasicAuth)
 
 	if err != nil {
-		logrus.Infoln("Error getting user for email:", email)
+		logrus.Errorln("Error getting user for email:", email)
 		return
 	}
 
@@ -658,7 +658,7 @@ func UserDelete(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Infoln("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
@@ -668,7 +668,7 @@ func UserDelete(w http.ResponseWriter, r *http.Request) {
 	user, found, err := getUserByEmail(email, grafanaURL, grafanaBasicAuth)
 
 	if err != nil {
-		logrus.Infoln("Error getting user for email: " + email)
+		logrus.Errorln("Error getting user for email: " + email)
 		handleInternalServerError(w, "internal server error", "error checking user existence: "+user.Email)
 	}
 
@@ -699,7 +699,7 @@ func removeUserFromTeam(user User, team Team, grafanaURL, auth string) (err erro
 	status, _, err := callGrafana(true, grafanaURL+"/api/teams/"+strconv.FormatInt(team.TeamId, 10)+"/members/"+strconv.FormatInt(user.Id, 10), auth, "DELETE", nil)
 
 	if err != nil {
-		logrus.Infof("Error removing user %s from team %s", user.Name, team.Name)
+		logrus.Errorf("Error removing user %s from team %s", user.Name, team.Name)
 		return
 	}
 
@@ -719,14 +719,14 @@ func getAllUsers(grafanaURL, auth string) (userList []User, err error) {
 	status, body, err := callGrafana(true, grafanaURL+"/api/users?perpage=1000&page=1", auth, "GET", nil)
 
 	if status != 200 || err != nil {
-		logrus.Infoln("Error listing all users")
+		logrus.Errorln("Error listing all users")
 		return
 	}
 
 	err = json.Unmarshal(body, &userList)
 
 	if err != nil {
-		logrus.Infoln("Error listing all users, malformed response from grafana")
+		logrus.Errorln("Error listing all users, malformed response from grafana")
 		return
 	}
 
@@ -737,7 +737,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 
 	if err != nil {
-		logrus.Infoln("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 
 	grafanaURL := r.Header.Get("X-Grafana-Url")
