@@ -23,6 +23,7 @@ import (
 	"text/template"
 
 	"github.com/gorilla/mux"
+	"github.com/sethvargo/go-password/password"
 	logrus "github.com/sirupsen/logrus"
 )
 
@@ -68,51 +69,46 @@ func handleNotFoundError(w http.ResponseWriter, detail string) {
 	w.Write(payload)
 }
 
+func generatePassword() (passwd string, err error) {
+	passwd, err = password.Generate(12, 6, 6, false, false)
+	if err != nil {
+		logrus.Fatal(err)
+		return passwd, err
+	}
+	return passwd, nil
+}
+
 func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []byte, error) {
 	var statusCode int
 	var body []byte
 	var err error
-
-	if payload != nil {
-		logrus.Debugln("---DEBUG enabled---")
-		logrus.Debugln("URL: " + url)
-		logrus.Debugln("Method: " + verb)
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(payload)
-		s := buf.String()
-		logrus.Debugf("Request body: %s", s)
-	}
-
-	req, err := http.NewRequest(verb, url, payload)
-
 	var authKey string
+
 	if admin {
-		logrus.Print("Using basic auth")
+		logrus.Debugln("Using basic auth")
 		authKey = "Basic"
 	} else {
-		logrus.Print("Using bearer auth")
+		logrus.Debugln("Using bearer auth")
 		authKey = "Bearer"
 	}
 
+	req, err := http.NewRequest(verb, url, payload)
 	req.Header.Set("Authorization", authKey+" "+auth)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
-
-	if err != nil {
-		logrus.Printf("Error calling Grafana: %s %s %s", verb, url, err.Error())
-		return statusCode, body, err
-	}
-
-	body, _ = ioutil.ReadAll(resp.Body)
-	statusCode = resp.StatusCode
-
-	logrus.Debugf("Response body from Grafana: %s", string(body))
-	logrus.Debugf("Response code from Grafana: %v", statusCode)
-
 	defer resp.Body.Close()
 
+	if err != nil {
+		logrus.Errorln("Error calling Grafana:", verb, url, err)
+	} else {
+		body, _ = ioutil.ReadAll(resp.Body)
+		statusCode = resp.StatusCode
+		logrus.Debugf("Response body from Grafana: %s", string(body))
+		logrus.Debugf("Response code from Grafana: %v", statusCode)
+	}
 	return statusCode, body, err
 }
 
@@ -126,7 +122,7 @@ func getTemplateFromUrl(templateUrl string) ([]byte, error) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		logrus.Println("Error fetching Grafana dashboard json from URL:", templateUrl)
+		logrus.Infoln("Error fetching Grafana dashboard json from URL:", templateUrl)
 		return templateBody, err
 	}
 
@@ -141,11 +137,11 @@ func getTemplateFromUrl(templateUrl string) ([]byte, error) {
 
 func getDashboardByName(name, grafanaURL, grafanaApiKey string) (url string, id int64, uid string, version int64, found bool, err error) {
 
-	logrus.Println("Searching for dashboard using tag:", dashboardPrefix+name)
+	logrus.Infoln("Searching for dashboard using tag:", dashboardPrefix+name)
 	status, body, err := callGrafana(false, grafanaURL+"/api/search?tag="+dashboardPrefix+name, grafanaApiKey, "GET", nil)
 
 	if status != 200 || err != nil {
-		logrus.Println("Error getting dashboard for name:", name)
+		logrus.Infoln("Error getting dashboard for name:", name)
 		return
 	}
 
@@ -160,7 +156,7 @@ func getDashboardByName(name, grafanaURL, grafanaApiKey string) (url string, id 
 		return url, id, uid, version, found, err
 	} else if len(g) == 1 {
 		found = true
-		logrus.Println("Found one dashboard matching search")
+		logrus.Infoln("Found one dashboard matching search")
 	} else if len(g) > 1 {
 		found = true
 		return url, id, uid, version, found, errors.New("more than one dashboard found")
@@ -177,11 +173,17 @@ func getDashboardByName(name, grafanaURL, grafanaApiKey string) (url string, id 
 }
 
 func createUser(user User, grafanaURL, auth string) (createdUser User, err error) {
-	user, found, err := getUserByEmail(user.Email, grafanaURL, auth)
+	existingUser, found, err := getUserByEmail(user.Email, grafanaURL, auth)
 
 	if found {
-		logrus.Printf("User %s exists already", user.Email)
-		return user, nil
+		logrus.Infof("User %s exists already", existingUser.Email)
+		return existingUser, nil
+	}
+
+	user.Password, err = generatePassword()
+
+	if err != nil {
+		return createdUser, err
 	}
 
 	payload, err := json.Marshal(user)
@@ -195,7 +197,7 @@ func createUser(user User, grafanaURL, auth string) (createdUser User, err error
 	status, _, err := callGrafana(true, grafanaURL+"/api/admin/users", auth, "POST", payloadReader)
 
 	if status != 200 || err != nil {
-		logrus.Println("Error creating user")
+		logrus.Infoln("Error creating user")
 		return user, err
 	}
 
@@ -219,7 +221,7 @@ func createTeam(teamName, grafanaURL, auth string) (team Team, err error) {
 	status, body, err := callGrafana(true, grafanaURL+"/api/teams", auth, "POST", payloadReader)
 
 	if err != nil {
-		logrus.Println("Error creating team: " + err.Error())
+		logrus.Infoln("Error creating team: " + err.Error())
 		return team, err
 	}
 
@@ -227,7 +229,7 @@ func createTeam(teamName, grafanaURL, auth string) (team Team, err error) {
 	err = json.Unmarshal(body, &grafanaResponse)
 
 	if status != 200 && status != 409 {
-		logrus.Println("Error creating team: " + teamName + "response status from grafana: " + strconv.Itoa(status))
+		logrus.Infoln("Error creating team: " + teamName + "response status from grafana: " + strconv.Itoa(status))
 		return team, errors.New("Error creating team:" + teamName)
 	}
 	teamResponse := Team{Name: teamName, TeamId: grafanaResponse.TeamId}
@@ -235,23 +237,23 @@ func createTeam(teamName, grafanaURL, auth string) (team Team, err error) {
 }
 
 func getUserByEmail(email, grafanaURL, auth string) (user User, found bool, err error) {
-	logrus.Println("Searching for user using email:", email)
+	logrus.Infoln("Searching for user using email:", email)
 
 	status, body, err := callGrafana(true, grafanaURL+"/api/users/lookup?loginOrEmail="+email, auth, "GET", nil)
 
 	if err != nil {
-		logrus.Println("Error getting user for email:", email)
+		logrus.Infoln("Error getting user for email:", email)
 		return
 	}
 
 	var u User
 
 	if status == 404 {
-		logrus.Println("User not found")
+		logrus.Infoln("User not found")
 		found = false
 		return u, found, err
 	} else {
-		logrus.Println("User found")
+		logrus.Infoln("User found")
 		found = true
 		err := json.Unmarshal(body, &u)
 		return u, found, err
@@ -259,21 +261,21 @@ func getUserByEmail(email, grafanaURL, auth string) (user User, found bool, err 
 }
 
 func deleteUserByEmail(email, grafanaURL, auth string) (err error) {
-	logrus.Println("Searching for user using email:", email)
+	logrus.Infoln("Searching for user using email:", email)
 
 	user, found, err := getUserByEmail(email, grafanaURL, auth)
 
 	if err != nil {
-		logrus.Println("Error deleting user for email:", email)
+		logrus.Infoln("Error deleting user for email:", email)
 		return err
 	}
 
 	if found == false {
-		logrus.Println("User not found")
+		logrus.Infoln("User not found")
 		return nil
 	}
 
-	logrus.Println("User found, deleting...")
+	logrus.Infoln("User found, deleting...")
 	status, _, err := callGrafana(true, grafanaURL+"/api/admin/users/"+strconv.FormatInt(user.Id, 10), auth, "DELETE", nil)
 
 	if err != nil || status != 200 {
@@ -282,8 +284,23 @@ func deleteUserByEmail(email, grafanaURL, auth string) (err error) {
 	return
 }
 
+func deleteUserById(id int64, grafanaURL, auth string) (err error) {
+	if id == 1 {
+		logrus.Infof("Skipping deletion of admin user...")
+		return nil
+	}
+	var idString string = strconv.FormatInt(id, 10)
+	status, _, err := callGrafana(true, grafanaURL+"/api/admin/users/"+idString, auth, "DELETE", nil)
+
+	if err != nil || status != 200 {
+		logrus.Errorf("Failed to delete user with ID:" + idString)
+		return err
+	}
+	return
+}
+
 func addUserToTeam(user User, team Team, grafanaURL, auth string) (err error) {
-	logrus.Printf("Adding user %s to team %s", user.Email, team.Name)
+	logrus.Infof("Adding user %s to team %s", user.Email, team.Name)
 
 	member := TeamMember{UserId: user.Id}
 	memberObject, err := json.Marshal(member)
@@ -295,48 +312,39 @@ func addUserToTeam(user User, team Team, grafanaURL, auth string) (err error) {
 	status, _, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, "POST", memberPayload)
 
 	if err != nil {
-		logrus.Printf("Error adding user to team %s", teamId)
+		logrus.Errorf("Error adding user to team %s", teamId)
 		return
 	}
 
-	if status != 400 && status != 200 {
-		logrus.Printf("Error adding user %s to team %s", strconv.FormatInt(user.Id, 10), teamId)
+	if status == 400 || status == 200 {
+		logrus.Infof("User %s added to team %s", strconv.FormatInt(user.Id, 10), teamId)
+		return
+	} else {
+		logrus.Errorf("Error adding user %s to team %s", strconv.FormatInt(user.Id, 10), teamId)
 		return
 	}
-
-	if status != 400 {
-		logrus.Println("User already in team")
-		return
-	}
-
-	if status == 200 {
-		logrus.Println("Added user to team")
-		return
-	}
-
-	return
 }
 
 func checkTeamMembership(email string, team Team, grafanaURL, auth string) (user User, found bool, err error) {
-	logrus.Printf("Checking user %s is in team %s:", email, team.Name)
+	logrus.Infof("Checking user %s is in team %s:", email, team.Name)
 
 	teamId := strconv.FormatInt(team.TeamId, 10)
 
 	status, body, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, "GET", nil)
 
 	if err != nil || status != 200 {
-		logrus.Println("Error checking team membership")
+		logrus.Errorln("Error checking team membership")
 		return
 	}
 
 	var u User
 
 	if len(body) == 0 {
-		logrus.Println("User not found")
+		logrus.Infoln("User not found")
 		found = false
 		return u, found, err
 	} else {
-		logrus.Println("User found")
+		logrus.Infoln("User found")
 		found = true
 		err := json.Unmarshal(body, &u)
 		return u, found, err
@@ -344,17 +352,17 @@ func checkTeamMembership(email string, team Team, grafanaURL, auth string) (user
 }
 
 func getTeamMembers(team Team, grafanaURL, auth string) (users []User, err error) {
-	logrus.Printf("Getting members of team: %s", team.Name)
+	logrus.Infof("Getting members of team: %s", team.Name)
 
 	teamId := strconv.FormatInt(team.TeamId, 10)
 
 	status, body, err := callGrafana(true, grafanaURL+"/api/teams/"+teamId+"/members", auth, "GET", nil)
 
-	logrus.Println("Response from membership list:")
-	logrus.Println(string(body))
+	logrus.Infoln("Response from membership list:")
+	logrus.Infoln(string(body))
 
 	if err != nil || status != 200 {
-		logrus.Println("Error checking team membership")
+		logrus.Errorln("Error checking team membership")
 		return users, err
 	}
 
@@ -370,19 +378,19 @@ func getTeamMembers(team Team, grafanaURL, auth string) (users []User, err error
 	}
 
 	if err != nil {
-		logrus.Println("Malformed response from Grafana")
+		logrus.Infoln("Malformed response from Grafana")
 		return users, err
 	}
 	return users, nil
 }
 
 func getTeamByName(name, grafanaURL, auth string) (team Team, found bool, err error) {
-	logrus.Println("Searching for team by name:", name)
+	logrus.Infoln("Searching for team by name:", name)
 
 	status, body, err := callGrafana(true, grafanaURL+"/api/teams/search?name="+name, auth, "GET", nil)
 
 	if err != nil {
-		logrus.Println("Error getting team with the name:", name)
+		logrus.Errorln("Error getting team with the name:", name)
 		return
 	}
 
@@ -390,14 +398,14 @@ func getTeamByName(name, grafanaURL, auth string) (team Team, found bool, err er
 	err = json.Unmarshal(body, &g)
 
 	if err != nil {
-		logrus.Println("Error getting team with the name:", name)
+		logrus.Errorln("Error getting team with the name:", name)
 		return
 	}
 
 	var t Team
 
 	if status == 404 {
-		logrus.Println("Team not found")
+		logrus.Infoln("Team not found")
 		found = false
 		return t, found, err
 	}
@@ -405,13 +413,13 @@ func getTeamByName(name, grafanaURL, auth string) (team Team, found bool, err er
 	if status == 200 && len(g.Teams) == 1 {
 		t = g.Teams[0]
 		if err != nil {
-			logrus.Println("Error getting team with the name:", name)
+			logrus.Errorln("Error getting team with the name:", name)
 		}
-		logrus.Println("Team found")
+		logrus.Infoln("Team found")
 		found = true
 		return t, found, err
 	} else {
-		logrus.Println("No team found:", name)
+		logrus.Infoln("No team found:", name)
 		found = false
 		return t, found, err
 	}
@@ -423,13 +431,13 @@ func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Println("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	if err != nil {
-		logrus.Println("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 
 	url, id, uid, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey)
@@ -451,12 +459,12 @@ func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if uid == "" {
-		logrus.Println("Dashboard already deleted!")
+		logrus.Infoln("Dashboard already deleted!")
 		handleDelete(w)
 		return
 	}
 
-	logrus.Printf("Attempting to delete dashboard with uid %s", string(uid))
+	logrus.Infof("Attempting to delete dashboard with uid %s", string(uid))
 
 	status, _, err := callGrafana(false, grafanaURL+"/api/dashboards/uid/"+uid, grafanaApiKey, "DELETE", nil)
 
@@ -466,7 +474,7 @@ func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if status == 200 {
-		logrus.Println("Dashboard deleted!")
+		logrus.Infoln("Dashboard deleted!")
 		w.WriteHeader(204)
 		return
 	} else {
@@ -481,7 +489,7 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Println("decode error:", err)
+		logrus.Infoln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
@@ -503,7 +511,7 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 	payload, err := json.Marshal(dashboard)
 
 	if err != nil {
-		logrus.Println(err)
+		logrus.Infoln(err)
 	}
 
 	handleSuccess(w, payload)
@@ -533,14 +541,14 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Println("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 	reqBody, err := ioutil.ReadAll(r.Body)
 
 	if len(reqBody) == 0 {
-		logrus.Println("Malformed request body:", string(reqBody))
+		logrus.Infoln("Malformed request body:", string(reqBody))
 		handleBadRequest(w, "request body malformed")
 		return
 	}
@@ -548,13 +556,13 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	var t TemplateUrl
 	err = json.Unmarshal(reqBody, &t)
 	if err != nil || t.Url == "" {
-		logrus.Println("Malformed request body:", string(reqBody))
+		logrus.Infoln("Malformed request body:", string(reqBody))
 		handleBadRequest(w, "request body malformed")
 		return
 	}
 
 	templateUrl := t.Url
-	logrus.Println("PUT request for name:", name, "templateUrl:", templateUrl)
+	logrus.Infoln("PUT request for name:", name, "templateUrl:", templateUrl)
 	templateFromUrl, err := getTemplateFromUrl(templateUrl)
 
 	if err != nil {
@@ -572,34 +580,34 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	var idVar, uidVar, versionVar string
 	if found == false {
 		idVar, uidVar, versionVar = "null", "null", "1"
-		logrus.Println("Dashboard not found, creating new")
+		logrus.Infoln("Dashboard not found, creating new")
 	} else {
 		idVar, uidVar = strconv.FormatInt(id, 10), "\""+uid+"\""
 		versionVar = strconv.FormatInt(version+1, 10)
-		logrus.Printf("Dashboard found id: %s uid: %s version: %s", idVar, uidVar, strconv.FormatInt(version, 10))
-		logrus.Printf("Updating existing dashboard id: %s uid: %s version: %s", idVar, uidVar, versionVar)
+		logrus.Infof("Dashboard found id: %s uid: %s version: %s", idVar, uidVar, strconv.FormatInt(version, 10))
+		logrus.Infof("Updating existing dashboard id: %s uid: %s version: %s", idVar, uidVar, versionVar)
 	}
 
-	logrus.Printf("Attempting to create dashboard for name %s in grafana", name)
+	logrus.Infof("Attempting to create dashboard for name %s in grafana", name)
 
 	renderedTemplateFromUrl, err := renderTemplate(name, idVar, uidVar, versionVar, string(templateFromUrl))
 
 	if err != nil {
-		logrus.Println(err)
+		logrus.Infoln(err)
 		return
 	}
 
 	status, body, err := callGrafana(false, grafanaURL+"/api/dashboards/db", grafanaApiKey, "POST", renderedTemplateFromUrl)
 
 	if status != 200 || err != nil {
-		logrus.Println(err)
+		logrus.Infoln(err)
 		handleInternalServerError(w, "internal server error", "error creating dashboard from template: "+templateUrl)
 		return
 	}
 
 	var g GrafanaDashboard
 	if err := json.Unmarshal(body, &g); err != nil {
-		logrus.Println(err)
+		logrus.Infoln(err)
 		return
 	}
 	url = grafanaURL + g.Url
@@ -620,17 +628,17 @@ func UserGet(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Println("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
 
-	logrus.Println("Getting user by email:", email)
+	logrus.Infoln("Getting user by email:", email)
 
 	user, found, err := getUserByEmail(email, grafanaURL, grafanaBasicAuth)
 
 	if err != nil {
-		logrus.Println("Error getting user for email:", email)
+		logrus.Errorln("Error getting user for email:", email)
 		return
 	}
 
@@ -650,22 +658,22 @@ func UserDelete(w http.ResponseWriter, r *http.Request) {
 
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 	if err != nil {
-		logrus.Println("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 	grafanaURL := r.Header.Get("X-Grafana-Url")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
 
-	logrus.Println("Getting user by email:", email)
+	logrus.Infoln("Getting user by email:", email)
 
 	user, found, err := getUserByEmail(email, grafanaURL, grafanaBasicAuth)
 
 	if err != nil {
-		logrus.Println("Error getting user for email: " + email)
+		logrus.Errorln("Error getting user for email: " + email)
 		handleInternalServerError(w, "internal server error", "error checking user existence: "+user.Email)
 	}
 
 	if found == false {
-		logrus.Println("Delete request for non existent user:", email)
+		logrus.Infoln("Delete request for non existent user:", email)
 		handleDelete(w)
 		return
 	}
@@ -691,27 +699,45 @@ func removeUserFromTeam(user User, team Team, grafanaURL, auth string) (err erro
 	status, _, err := callGrafana(true, grafanaURL+"/api/teams/"+strconv.FormatInt(team.TeamId, 10)+"/members/"+strconv.FormatInt(user.Id, 10), auth, "DELETE", nil)
 
 	if err != nil {
-		logrus.Printf("Error removing user %s from team %s", user.Name, team.Name)
+		logrus.Errorf("Error removing user %s from team %s", user.Name, team.Name)
 		return
 	}
 
 	if status == 404 {
-		logrus.Printf("User not in team")
+		logrus.Infof("User not in team")
 		return nil
 	}
 
 	if status == 200 {
-		logrus.Printf("User %s removed from team %s", user.Name, team.Name)
+		logrus.Infof("User %s removed from team %s", user.Name, team.Name)
 		return nil
 	}
 	return
+}
+
+func getAllUsers(grafanaURL, auth string) (userList []User, err error) {
+	status, body, err := callGrafana(true, grafanaURL+"/api/users?perpage=1000&page=1", auth, "GET", nil)
+
+	if status != 200 || err != nil {
+		logrus.Errorln("Error listing all users")
+		return
+	}
+
+	err = json.Unmarshal(body, &userList)
+
+	if err != nil {
+		logrus.Errorln("Error listing all users, malformed response from grafana")
+		return
+	}
+
+	return userList, nil
 }
 
 func UsersPut(w http.ResponseWriter, r *http.Request) {
 	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
 
 	if err != nil {
-		logrus.Println("decode error:", err)
+		logrus.Errorln("decode error:", err)
 	}
 
 	grafanaURL := r.Header.Get("X-Grafana-Url")
@@ -719,7 +745,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 	reqBody, err := ioutil.ReadAll(r.Body)
 
 	if len(reqBody) == 0 {
-		logrus.Println("Missing request body:", string(reqBody))
+		logrus.Infoln("Missing request body:", string(reqBody))
 		handleBadRequest(w, "request body malformed")
 		return
 	}
@@ -728,7 +754,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(reqBody, &users)
 
 	if err != nil {
-		logrus.Println("Malformed request body:", string(reqBody), err.Error())
+		logrus.Infoln("Malformed request body:", string(reqBody), err.Error())
 		handleBadRequest(w, "request body malformed")
 		return
 	}
@@ -739,15 +765,32 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 	// List the users in the team
 	usersInTeam, err := getTeamMembers(team, grafanaURL, grafanaBasicAuth)
 
-	logrus.Println("Listing users in the team")
-	logrus.Println(usersInTeam)
+	if err != nil {
+		handleInternalServerError(w, "Error listing users in team: "+teamName, err.Error())
+	}
 
-	// Delete any members who are in the team but not the PUT payload
+	// Remove any members who are in the team but not the PUT payload
 	for _, u := range usersInTeam {
 		if userInList(u, users) == false {
 			err = removeUserFromTeam(u, team, grafanaURL, grafanaBasicAuth)
 			if err != nil {
 				handleInternalServerError(w, "Error removing user: "+u.Email+" from team: "+team.Name+" error: ", err.Error())
+			}
+		}
+	}
+
+	allUsers, err := getAllUsers(grafanaURL, grafanaBasicAuth)
+
+	if err != nil {
+		handleInternalServerError(w, "Error fetching users from grafana, error: ", err.Error())
+	}
+
+	// Delete any users who are not in the PUT payload
+	for _, u := range allUsers {
+		if userInList(u, users) == false && u.Id != 1 {
+			err = deleteUserById(u.Id, grafanaURL, grafanaBasicAuth)
+			if err != nil {
+				handleInternalServerError(w, "Error deleting user from grafana, error: ", err.Error())
 			}
 		}
 	}
@@ -769,7 +812,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 		agentResponse = append(agentResponse, user)
 
 		// Add the user to the team if they arent already in it
-		logrus.Printf("Adding user with id %s to team %s", strconv.FormatInt(user.Id, 10), strconv.FormatInt(team.TeamId, 10))
+		logrus.Infof("Adding user with id %s to team %s", strconv.FormatInt(user.Id, 10), strconv.FormatInt(team.TeamId, 10))
 		err = addUserToTeam(user, team, grafanaURL, grafanaBasicAuth)
 
 		if err != nil {
