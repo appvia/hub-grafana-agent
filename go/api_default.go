@@ -316,22 +316,13 @@ func addUserToTeam(user User, team Team, grafanaURL, auth string) (err error) {
 		return
 	}
 
-	if status != 400 && status != 200 {
+	if status == 400 || status == 200 {
+		logrus.Infof("User %s added to team %s", strconv.FormatInt(user.Id, 10), teamId)
+		return
+	} else {
 		logrus.Infof("Error adding user %s to team %s", strconv.FormatInt(user.Id, 10), teamId)
 		return
 	}
-
-	if status != 400 {
-		logrus.Infoln("User already in team")
-		return
-	}
-
-	if status == 200 {
-		logrus.Infoln("Added user to team")
-		return
-	}
-
-	return
 }
 
 func checkTeamMembership(email string, team Team, grafanaURL, auth string) (user User, found bool, err error) {
