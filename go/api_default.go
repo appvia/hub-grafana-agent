@@ -17,12 +17,14 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"text/template"
 
 	"github.com/gorilla/mux"
+	"github.com/sethvargo/go-password/password"
 	logrus "github.com/sirupsen/logrus"
 )
 
@@ -66,6 +68,14 @@ func handleNotFoundError(w http.ResponseWriter, detail string) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusNotFound)
 	w.Write(payload)
+}
+
+func generatePassword() (passwd string) {
+	passwd, err := password.Generate(12, 6, 6, false, false)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return passwd
 }
 
 func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []byte, error) {
@@ -163,10 +173,10 @@ func getDashboardByName(name, grafanaURL, grafanaApiKey string) (url string, id 
 }
 
 func createUser(user User, grafanaURL, auth string) (createdUser User, err error) {
-	user, found, err := getUserByEmail(user.Email, grafanaURL, auth)
+	existingUser, found, err := getUserByEmail(user.Email, grafanaURL, auth)
 
 	if found {
-		logrus.Printf("User %s exists already", user.Email)
+		logrus.Printf("User %s exists already", existingUser.Email)
 		return user, nil
 	}
 
