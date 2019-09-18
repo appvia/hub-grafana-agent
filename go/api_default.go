@@ -17,7 +17,6 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -70,12 +69,13 @@ func handleNotFoundError(w http.ResponseWriter, detail string) {
 	w.Write(payload)
 }
 
-func generatePassword() (passwd string) {
-	passwd, err := password.Generate(12, 6, 6, false, false)
+func generatePassword() (passwd string, err error) {
+	passwd, err = password.Generate(12, 6, 6, false, false)
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
+		return passwd, err
 	}
-	return passwd
+	return passwd, nil
 }
 
 func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []byte, error) {
@@ -178,6 +178,12 @@ func createUser(user User, grafanaURL, auth string) (createdUser User, err error
 	if found {
 		logrus.Infof("User %s exists already", existingUser.Email)
 		return existingUser, nil
+	}
+
+	user.Password, err = generatePassword()
+
+	if err != nil {
+		return createdUser, err
 	}
 
 	payload, err := json.Marshal(user)
