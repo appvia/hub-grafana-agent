@@ -72,20 +72,8 @@ func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []
 	var statusCode int
 	var body []byte
 	var err error
-
-	if payload != nil {
-		logrus.Debugln("---DEBUG enabled---")
-		logrus.Debugln("URL: " + url)
-		logrus.Debugln("Method: " + verb)
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(payload)
-		s := buf.String()
-		logrus.Debugf("Request body: %s", s)
-	}
-
-	req, err := http.NewRequest(verb, url, payload)
-
 	var authKey string
+
 	if admin {
 		logrus.Print("Using basic auth")
 		authKey = "Basic"
@@ -94,25 +82,23 @@ func callGrafana(admin bool, url, auth, verb string, payload io.Reader) (int, []
 		authKey = "Bearer"
 	}
 
+	req, err := http.NewRequest(verb, url, payload)
 	req.Header.Set("Authorization", authKey+" "+auth)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
-
-	if err != nil {
-		logrus.Printf("Error calling Grafana: %s %s %s", verb, url, err.Error())
-		return statusCode, body, err
-	}
-
-	body, _ = ioutil.ReadAll(resp.Body)
-	statusCode = resp.StatusCode
-
-	logrus.Debugf("Response body from Grafana: %s", string(body))
-	logrus.Debugf("Response code from Grafana: %v", statusCode)
-
 	defer resp.Body.Close()
 
+	if err != nil {
+		logrus.Println("Error calling Grafana:", verb, url, err)
+	} else {
+		body, _ = ioutil.ReadAll(resp.Body)
+		statusCode = resp.StatusCode
+		logrus.Printf("Response body from Grafana: %s", string(body))
+		logrus.Printf("Response code from Grafana: %v", statusCode)
+	}
 	return statusCode, body, err
 }
 
