@@ -790,7 +790,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 
 	// Delete any users who are not in the PUT payload
 	for _, u := range allUsers {
-		if userInList(u, users) == false {
+		if userInList(u, users) == false && u.Id != 1 {
 			err = deleteUserById(u.Id, grafanaURL, grafanaBasicAuth)
 			if err != nil {
 				handleInternalServerError(w, "Error deleting user from grafana, error: ", err.Error())
