@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/gorilla/mux"
@@ -135,12 +136,38 @@ func getTemplateFromUrl(templateUrl string) ([]byte, error) {
 	return templateBody, nil
 }
 
+func getDashboardAlerts(id int64, grafanaURL, grafanaApiKey string) (alerts []GrafanaDashboardAlert, err error) {
+	idString := strconv.FormatInt(id, 10)
+	logrus.Infoln("Getting alerts for dashboard:", idString)
+	status, body, err := callGrafana(false, grafanaURL+"/api/alerts?dashboardId="+idString, grafanaApiKey, "GET", nil)
+
+	err = json.Unmarshal(body, &alerts)
+
+	if status != 200 || err != nil {
+		logrus.Errorln("Error getting alerts for dashboard:", idString)
+	}
+	return alerts, err
+}
+
 func getDashboardByName(name, grafanaURL, grafanaApiKey string) (url string, id int64, uid string, version int64, found bool, err error) {
 
 	logrus.Infoln("Searching for dashboard using tag:", dashboardPrefix+name)
+
 	status, body, err := callGrafana(false, grafanaURL+"/api/search?tag="+dashboardPrefix+name, grafanaApiKey, "GET", nil)
 
-	if status != 200 || err != nil {
+	if status == 401 {
+		logrus.Errorln("Invalid Grafana API key")
+		err = errors.New("Invalid Grafana API key")
+		return
+	}
+
+	if status == 404 {
+		logrus.Errorln("Dashbord not found")
+		found = false
+		return
+	}
+
+	if status != 200 {
 		logrus.Infoln("Error getting dashboard for name:", name)
 		return
 	}
@@ -433,7 +460,7 @@ func DashboardNameDelete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logrus.Errorln("decode error:", err)
 	}
-	grafanaURL := r.Header.Get("X-Grafana-Url")
+	grafanaURL := strings.TrimRight(r.Header.Get("X-Grafana-Url"), "/")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	if err != nil {
@@ -491,7 +518,7 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logrus.Infoln("decode error:", err)
 	}
-	grafanaURL := r.Header.Get("X-Grafana-Url")
+	grafanaURL := strings.TrimRight(r.Header.Get("X-Grafana-Url"), "/")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 
 	url, id, uid, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey)
@@ -501,7 +528,7 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if found == false {
+	if !found {
 		handleNotFoundError(w, "dashboard not found")
 		return
 	}
@@ -515,6 +542,52 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handleSuccess(w, payload)
+	return
+}
+
+func DashboardAlertsNameGet(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name := vars["name"]
+
+	_, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Grafana-CA"))
+	if err != nil {
+		logrus.Infoln("decode error:", err)
+	}
+	grafanaURL := strings.TrimRight(r.Header.Get("X-Grafana-Url"), "/")
+	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
+
+	_, id, _, _, found, err := getDashboardByName(name, grafanaURL, grafanaApiKey)
+
+	if err != nil {
+		logrus.Errorln("Error retrieving dashboard:", name)
+		handleInternalServerError(w, "Error retrieving dashboard: "+name, err.Error())
+		return
+	}
+
+	if !found {
+		handleNotFoundError(w, "Dashboard not found")
+		return
+	}
+
+	alerts, err := getDashboardAlerts(id, grafanaURL, grafanaApiKey)
+
+	if err != nil {
+		logrus.Errorln("Error retrieving alerts for dashboard")
+		handleInternalServerError(w, "Error retrieving alerts for dashboard", err.Error())
+		return
+	}
+
+	var updatedAlerts []GrafanaDashboardAlert
+
+	for _, alert := range alerts {
+		var updatedAlert GrafanaDashboardAlert
+		updatedAlert = alert
+		updatedAlert.Url = grafanaURL + alert.Url
+		updatedAlerts = append(updatedAlerts, updatedAlert)
+	}
+
+	responseBody, err := json.Marshal(updatedAlerts)
+	handleSuccess(w, responseBody)
 	return
 }
 
@@ -543,7 +616,7 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logrus.Errorln("decode error:", err)
 	}
-	grafanaURL := r.Header.Get("X-Grafana-Url")
+	grafanaURL := strings.TrimRight(r.Header.Get("X-Grafana-Url"), "/")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 	reqBody, err := ioutil.ReadAll(r.Body)
 
@@ -630,7 +703,7 @@ func UserGet(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logrus.Errorln("decode error:", err)
 	}
-	grafanaURL := r.Header.Get("X-Grafana-Url")
+	grafanaURL := strings.TrimRight(r.Header.Get("X-Grafana-Url"), "/")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
 
 	logrus.Infoln("Getting user by email:", email)
@@ -660,7 +733,7 @@ func UserDelete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logrus.Errorln("decode error:", err)
 	}
-	grafanaURL := r.Header.Get("X-Grafana-Url")
+	grafanaURL := strings.TrimRight(r.Header.Get("X-Grafana-Url"), "/")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
 
 	logrus.Infoln("Getting user by email:", email)
@@ -740,7 +813,7 @@ func UsersPut(w http.ResponseWriter, r *http.Request) {
 		logrus.Errorln("decode error:", err)
 	}
 
-	grafanaURL := r.Header.Get("X-Grafana-Url")
+	grafanaURL := strings.TrimRight(r.Header.Get("X-Grafana-Url"), "/")
 	grafanaBasicAuth := r.Header.Get("X-Grafana-Basic-Auth")
 	reqBody, err := ioutil.ReadAll(r.Body)
 

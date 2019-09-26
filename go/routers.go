@@ -78,6 +78,13 @@ var routes = Routes{
 	},
 
 	Route{
+		"DashboardAlertsNameGet",
+		strings.ToUpper("Get"),
+		"/api/v1beta/dashboards/{name}/alerts",
+		DashboardAlertsNameGet,
+	},
+
+	Route{
 		"UserGet",
 		strings.ToUpper("Get"),
 		"/api/v1beta/users/{email}",

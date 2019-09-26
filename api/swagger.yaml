@@ -91,6 +91,34 @@ paths:
           description: "A generic error returned by the api"
           schema:
             $ref: "#/responses/apierror"
+  /dashboards/{name}/alerts:
+    parameters:
+      - $ref: "#/parameters/grafana-api-key"
+      - $ref: "#/parameters/grafana-url"
+      - $ref: "#/parameters/grafana-ca-cert"
+    get:
+      summary: "Get alerts for a dashboard"
+      description: "Used to retrieve alerts for a dashboard\n"
+      parameters:
+      - name: "name"
+        in: "path"
+        description: "The name of the dashboard"
+        required: true
+        type: "string"
+        x-exportParamName: "Name"
+      responses:
+        200:
+          description: "The specification of an alert"
+          schema:
+            $ref: "#/responses/alerts"
+        404:
+          description: "Not found"
+          schema:
+            $ref: "#/responses/apierror"
+        default:
+          description: "A generic error returned by the api"
+          schema:
+            $ref: "#/responses/apierror"
   /users:
     put:
       summary: "Add a user"
@@ -151,6 +179,40 @@ definitions:
       url: "https://yourgrafana.com/d/abc123/yourdash"
       id: "123"
       uid: "abc123"
+  Alert:
+    type: "object"
+    required:
+    - "name"
+    - "url"
+    - "id"
+    - "state"
+    properties:
+      name:
+        type: "string"
+        description: "The name of the alert"
+      url:
+        type: "string"
+        description: "The url of the dashboard"
+      id:
+        type: "string"
+        description: "The id of this dashboard"
+      state:
+        type: "string"
+        description: "The state of the alert"
+    description: "The definition of an alert"
+    example:
+      name: "my-dash"
+      url: "https://yourgrafana.com/d/abc123/yourdash"
+      id: "123"
+      state: "no_data"
+  AlertList:
+    description: "The definition of a Grafana alert list"
+    type: "object"
+    items:
+      items:
+        type: array
+        items:
+          "$ref": "#/definitions/Alert"
   TemplateUrl:
     description: "Template URL"
     type: "object"
@@ -245,3 +307,7 @@ responses:
     description: "The specification of a dashboard"
     schema:
       $ref: "#/definitions/Dashboard"
+  alerts:
+    description: "The specification of a dashboard"
+    schema:
+      $ref: "#/definitions/AlertList"
