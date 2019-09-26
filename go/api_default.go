@@ -538,7 +538,7 @@ func DashboardNameGet(w http.ResponseWriter, r *http.Request) {
 	payload, err := json.Marshal(dashboard)
 
 	if err != nil {
-		logrus.Infoln(err)
+		logrus.Errorln(err)
 	}
 
 	handleSuccess(w, payload)
@@ -587,6 +587,11 @@ func DashboardAlertsNameGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	responseBody, err := json.Marshal(updatedAlerts)
+
+	if err != nil {
+		panic(err)
+	}
+
 	handleSuccess(w, responseBody)
 	return
 }
@@ -619,6 +624,10 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	grafanaURL := strings.TrimRight(r.Header.Get("X-Grafana-Url"), "/")
 	grafanaApiKey := r.Header.Get("X-Grafana-API-Key")
 	reqBody, err := ioutil.ReadAll(r.Body)
+
+	if err != nil {
+		panic(err)
+	}
 
 	if len(reqBody) == 0 {
 		logrus.Infoln("Malformed request body:", string(reqBody))
@@ -666,23 +675,24 @@ func DashboardNamePut(w http.ResponseWriter, r *http.Request) {
 	renderedTemplateFromUrl, err := renderTemplate(name, idVar, uidVar, versionVar, string(templateFromUrl))
 
 	if err != nil {
-		logrus.Infoln(err)
+		logrus.Errorln(err)
 		return
 	}
 
 	status, body, err := callGrafana(false, grafanaURL+"/api/dashboards/db", grafanaApiKey, "POST", renderedTemplateFromUrl)
 
 	if status != 200 || err != nil {
-		logrus.Infoln(err)
+		logrus.Errorln(err)
 		handleInternalServerError(w, "internal server error", "error creating dashboard from template: "+templateUrl)
 		return
 	}
 
 	var g GrafanaDashboard
 	if err := json.Unmarshal(body, &g); err != nil {
-		logrus.Infoln(err)
+		handleInternalServerError(w, "internal server error", "Unexpected response from Grafana")
 		return
 	}
+
 	url = grafanaURL + g.Url
 	id = g.Id
 	uid = g.Uid
