@@ -201,7 +201,7 @@ definitions:
         description: "The state of the alert"
     description: "The definition of an alert"
     example:
-      name: "my-dash"
+      name: "my-alert"
       url: "https://yourgrafana.com/d/abc123/yourdash"
       id: "123"
       state: "no_data"
