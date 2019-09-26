@@ -120,6 +120,11 @@ paths:
           schema:
             $ref: "#/responses/apierror"
   /users:
+    parameters:
+      - $ref: "#/parameters/grafana-api-key"
+      - $ref: "#/parameters/grafana-basic-auth"
+      - $ref: "#/parameters/grafana-url"
+      - $ref: "#/parameters/grafana-ca-cert"
     put:
       summary: "Add a user"
       description: "Used to create a new user\n"
@@ -261,13 +266,6 @@ parameters:
     required: true
     type: "string"
     x-exportParamName: "Name"
-  email:
-    name: "email"
-    in: "path"
-    description: "Email address of a user"
-    required: true
-    type: "string"
-    x-exportParamName: "Email"
   template_url:
     name: "template_url"
     in: "body"
