@@ -37,3 +37,10 @@ type GrafanaDashboard struct {
 	Url     string `json:"url"`
 	Version int64  `json:"version,omitempty"`
 }
+
+type GrafanaDashboardAlert struct {
+	Name  string `json:"name,omitempty"`
+	State string `json:"state"`
+	Id    int64  `json:"id"`
+	Url   string `json:"url"`
+}
